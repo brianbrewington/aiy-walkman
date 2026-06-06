@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+.env.*
+*.pat
+*secret*
+oauth.json
+
+# Python
+__pycache__/
+*.py[cod]
+
+# OS / editor
+.DS_Store
+*.swp
