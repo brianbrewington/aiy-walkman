@@ -102,6 +102,15 @@ Config: `config/walkman.toml` (playlist, button thresholds, LED brightness/breat
   hardware project. Requested kid features: **repeat-track** (Nathan) and a now-playing
   LCD. See `docs/IDEAS.md`.
 
+## Tests
+Pure-logic unit tests (no Pi/hardware needed — run on any machine):
+```bash
+python3 -m unittest discover -s tests        # or: pytest tests/
+```
+They cover the gesture state machine, LED rendering + shutdown latch, the Mopidy
+JSON-RPC client, autoplay, and the YouTube auth converter — including regression
+guards for the bugs we hit (next-on-paused→silence, single-vs-double, SAPISIDHASH).
+
 ## Docs map
 - `docs/WORKLOG.md` — full chronological build narrative + gotchas (read this if stuck)
 - `docs/STEP0-NOTES.md … STEP5-NOTES.md` — per-step detail
