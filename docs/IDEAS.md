@@ -64,6 +64,20 @@ Candidate fixes to try (need a reboot-with-plug-in test to validate):
 - Accept + document: if booted with headphones in, replug once. (Lowest effort;
   acceptable if kids usually power on with nothing plugged, then add headphones.)
 
+## Full username genericity (beyond the install guide)
+
+The install guide (`docs/INSTALL.html`) now takes the box username as a field, so the
+`scp`/`ssh` commands aren't hardcoded to `brew`. But the rest of the system still
+assumes `brew`:
+- `setup.sh` honors a `WALKMAN_USER` env var but defaults to `brew`, and warns if the
+  repo isn't at `/home/brew/walkman`.
+- The `systemd/*.service` units hardcode `User=brew`, `/home/brew/...` paths, and the
+  shim `PYTHONPATH=/home/brew/walkman/shim`.
+- `mopidy.conf` / `walkman.toml` use `/home/brew/...` auth paths.
+To support a different login on a fresh unit, template these (e.g. setup.sh rewrites
+the unit files + configs from `WALKMAN_USER`/`$HOME`). Low priority while all units use
+`brew`, but needed for a truly generic image.
+
 ## Notes
 - These reinforce the value of the **pluggable input layer + bidirectional CPX
   serial channel** already in the design: volume, repeat-track, and a now-playing

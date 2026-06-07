@@ -79,6 +79,11 @@ box saying: <em>"I don't have a YouTube Music login yet — set me up!"</em></p>
 </div>
 
 <div class="field">
+  <label for="user">The box's login name</label>
+  <input id="user" value="brew" autocomplete="off" spellcheck="false">
+  <div class="hint">The username on the box (ask whoever set it up). The demo box uses <code>brew</code>. <span id="user-saved" class="saved"></span></div>
+</div>
+<div class="field">
   <label for="box">Your box's network name</label>
   <input id="box" value="walkman-a.local" autocomplete="off" spellcheck="false">
   <div class="hint">Leave as <code>walkman-a.local</code> unless you were told otherwise. <span id="box-saved" class="saved"></span></div>
@@ -253,7 +258,7 @@ function readCookies() {
 }
 
 // ---- live command generation + field persistence ----
-var FIELDS = ['box', 'playlist', 'cookiefile'];
+var FIELDS = ['user', 'box', 'playlist', 'cookiefile'];
 function val(id) { return (document.getElementById(id).value || '').trim(); }
 function flashSaved(id) {
   var el = document.getElementById(id + '-saved'); if (!el) return;
@@ -261,13 +266,16 @@ function flashSaved(id) {
   el._t = setTimeout(function () { el.textContent = ''; }, 1200);
 }
 function render() {
+  var user = val('user') || 'brew';
   var box = val('box') || 'walkman-a.local';
   var file = val('cookiefile') || 'music.youtube.com_cookies.txt';
   var pl = val('playlist') || 'PUT_YOUR_PLAYLIST_ID_HERE';
+  // Quote the filename (handles spaces/parens, e.g. "...cookies (2).txt"); keep ~
+  // OUTSIDE the quotes so the shell still expands it to your home directory.
   document.getElementById('cmd1').textContent =
-    "scp ~/Downloads/" + file + " brew@" + box + ":/tmp/cookies.txt";
+    'scp ~/Downloads/"' + file + '" ' + user + '@' + box + ':/tmp/cookies.txt';
   document.getElementById('cmd2').textContent =
-    "ssh -t brew@" + box + " '~/walkman/scripts/walkman-account.sh " +
+    "ssh -t " + user + "@" + box + " '~/walkman/scripts/walkman-account.sh " +
     "--cookies /tmp/cookies.txt --playlist " + pl + " && rm -f /tmp/cookies.txt'";
 }
 FIELDS.forEach(function (id) {
