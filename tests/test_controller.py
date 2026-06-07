@@ -4,7 +4,24 @@ from unittest import mock
 
 import _path  # noqa: F401
 from walkman import led
-from walkman.controller import Controller
+from walkman.controller import Controller, decide_mode
+
+
+class DecideModeTest(unittest.TestCase):
+    def test_missing_auth_is_magenta(self):
+        self.assertEqual(decide_mode(False, True, True, "playing", 0), led.REAUTH)
+
+    def test_mopidy_startup_then_error(self):
+        self.assertEqual(decide_mode(True, False, True, None, 1), led.STARTUP)
+        self.assertEqual(decide_mode(True, False, True, None, 999), led.ERROR)
+
+    def test_wifi_down_is_blue(self):
+        self.assertEqual(decide_mode(True, True, False, "playing", 0), led.STARTUP)
+
+    def test_playing_and_paused(self):
+        self.assertEqual(decide_mode(True, True, True, "playing", 0), led.PLAYING)
+        self.assertEqual(decide_mode(True, True, True, "paused", 0), led.PAUSED)
+        self.assertEqual(decide_mode(True, True, True, None, 0), led.PAUSED)
 
 CFG = {"mopidy": {"rpc_url": "http://x/rpc"}, "button": {}, "led": {}}
 

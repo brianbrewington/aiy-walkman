@@ -4,7 +4,13 @@
 
 [playlist]
 # YouTube Music playlist ID — the `list=` value from the playlist URL.
-id = "PL5bKS0Bw-MfRrtcFhf0SQeo-evkVM8Wgx"
+# Set per-device by scripts/walkman-account.sh --playlist <ID>.
+id = "REPLACE_WITH_YOUR_PLAYLIST_ID"
+
+[auth]
+# This device's YouTube Music auth file (written by walkman-account.sh).
+# If it's missing, the LED blinks magenta = "needs setup / re-login".
+file = "/home/brew/.config/walkman/ytmusic-auth.json"
 
 [playback]
 random = true      # shuffle

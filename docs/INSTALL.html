@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up your Walkman 🎵</title>
+<style>
+  :root { --bg:#fdfdfb; --ink:#1c1c1e; --soft:#5c5c66; --accent:#1a7f5a;
+          --box:#f1f5f3; --warn:#fff4e5; --warnbd:#e0a64a; --code:#0f1720; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 22px 80px; }
+  h1 { font-size: 2rem; margin: .2em 0 .1em; }
+  h2 { font-size: 1.35rem; margin: 1.8em 0 .4em; border-bottom:2px solid var(--box);
+       padding-bottom:.2em; }
+  h3 { font-size: 1.08rem; margin: 1.2em 0 .3em; }
+  .lede { color:var(--soft); font-size:1.05rem; }
+  code, kbd { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.92em; }
+  pre { background:var(--code); color:#e6edf3; padding:14px 16px; border-radius:10px;
+        overflow-x:auto; font-size:.86rem; line-height:1.5; }
+  pre code { color:inherit; }
+  .what { background:var(--box); border-radius:12px; padding:2px 18px; margin:14px 0; }
+  .why { background:#eef6f1; border-left:4px solid var(--accent); border-radius:8px;
+         padding:10px 16px; margin:14px 0; }
+  .why b { color:var(--accent); }
+  .warn { background:var(--warn); border-left:4px solid var(--warnbd); border-radius:8px;
+          padding:10px 16px; margin:14px 0; }
+  .step { display:flex; gap:14px; align-items:baseline; margin-top:1.6em; }
+  .num { flex:0 0 auto; width:30px; height:30px; border-radius:50%; background:var(--accent);
+         color:#fff; font-weight:700; display:grid; place-items:center; font-size:.95rem; }
+  .step h2 { border:0; margin:0; padding:0; }
+  table { border-collapse:collapse; width:100%; margin:10px 0; font-size:.95rem; }
+  td,th { border:1px solid #ddd; padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--box); }
+  .dot { display:inline-block; width:14px; height:14px; border-radius:50%; vertical-align:middle;
+         margin-right:6px; border:1px solid #0002; }
+  .g{background:#39d353}.a{background:#f0a93b}.b{background:#3b82f6}.m{background:#c850c8}
+  .r{background:#e5484d}.w{background:#eee}
+  footer { color:var(--soft); font-size:.9rem; margin-top:3em; border-top:1px solid var(--box);
+           padding-top:1em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Set up your Walkman 🎵</h1>
+<p class="lede">A little music box with one button. Follow these steps once to teach it
+<em>your</em> YouTube Music, and it'll play your playlist every time you turn it on.
+No experience needed — read each part, including the little "<b>Why?</b>" notes that
+explain what's going on.</p>
+
+<div class="what">
+<h3>What is this thing?</h3>
+<p>It's a tiny computer (a Raspberry Pi) wired to a speaker/headphone board and one
+big button with a glowing ring. When it's set up, you power it on and music just
+plays. The button's <b>light tells you what's happening</b>, and the button itself is
+the only control.</p>
+<p><b>Right now the light is blinking <span class="dot m"></span>magenta.</b> That's the
+box saying: <em>"I don't have a YouTube Music login yet — set me up!"</em> That's what
+this guide does.</p>
+</div>
+
+<h2>What you'll need</h2>
+<ul>
+  <li>The Walkman box, <b>plugged in</b> and on your home <b>Wi-Fi</b> (it joins automatically).</li>
+  <li>A <b>Mac</b> (these steps use the Mac's Terminal; Windows works too but the commands differ).</li>
+  <li>A <b>YouTube Music account</b> you can log into in a web browser.</li>
+  <li>About 10 minutes.</li>
+</ul>
+
+<h2>A few words first (so the steps make sense)</h2>
+
+<div class="why"><b>Why — what's a "cookie"?</b><br>
+When you log into a website, your browser saves a small secret file called a
+<b>cookie</b>. Every time you return, the browser shows the cookie so the site knows
+it's still you — that's why you don't have to log in every single time. Our box can't
+open a browser, so we'll <b>copy your YouTube Music cookie onto the box</b> so it can
+load your music as you. Treat that cookie like a house key: anyone who has it can use
+your account, so don't post it anywhere. (It also expires after a while — when it does,
+the light turns magenta again and you just redo the cookie steps.)</div>
+
+<div class="why"><b>Why — what's a "playlist ID"?</b><br>
+Every YouTube Music playlist has a unique code in its web address. The box needs that
+code to know which playlist to play. You'll grab it in Step 1.</div>
+
+<div class="why"><b>Why — what's "Terminal / SSH"?</b><br>
+<b>Terminal</b> is a Mac app where you type commands instead of clicking. <b>SSH</b> is
+a way to safely send commands to <em>another</em> computer over your network — here,
+the box. We'll use it to hand the box your cookie and playlist.</div>
+
+<div class="step"><div class="num">1</div><h2>Get your playlist ID</h2></div>
+<ol>
+  <li>In a browser, open <a href="https://music.youtube.com">music.youtube.com</a> and
+      <b>sign in</b>.</li>
+  <li>Open the playlist you want the box to play.</li>
+  <li>Look at the address bar. The URL looks like:<br>
+      <code>https://music.youtube.com/playlist?list=<b>PLxxxxxxxxxxxx</b></code></li>
+  <li>The part after <code>list=</code> (starting with <code>PL</code>, <code>VL</code>,
+      or similar) is your <b>playlist ID</b>. Copy it somewhere — you'll paste it in Step 3.</li>
+</ol>
+
+<div class="step"><div class="num">2</div><h2>Export your cookie</h2></div>
+<ol>
+  <li>In <b>Chrome</b> (or Edge/Firefox), install the free, open-source extension
+      <b>"Get cookies.txt LOCALLY"</b> from the browser's extension store. ("Locally"
+      matters — it reads your cookies on your own computer and doesn't send them anywhere.)</li>
+  <li>Go to <a href="https://music.youtube.com">music.youtube.com</a>, still <b>signed in</b>.</li>
+  <li>Click the extension's icon → <b>Export</b> (Netscape format). It saves a file to
+      your <b>Downloads</b>, usually named <code>music.youtube.com_cookies.txt</code>.</li>
+</ol>
+<div class="warn">⚠️ That file is your account key. Keep it on your computer, don't email
+or share it. We'll delete the copy on the box automatically at the end of Step 3.</div>
+
+<div class="step"><div class="num">3</div><h2>Send it to the box</h2></div>
+<p>Open <b>Terminal</b> (press <kbd>⌘ Space</kbd>, type "Terminal", hit Return). Then run
+these two commands. <b>Replace <code>PUT_YOUR_PLAYLIST_ID_HERE</code></b> with the ID
+from Step 1. If your cookie file has a different name, fix it in the first command.</p>
+<pre><code>scp ~/Downloads/music.youtube.com_cookies.txt brew@walkman-a.local:/tmp/cookies.txt
+
+ssh -t brew@walkman-a.local '~/walkman/scripts/walkman-account.sh --cookies /tmp/cookies.txt --playlist PUT_YOUR_PLAYLIST_ID_HERE && rm -f /tmp/cookies.txt'</code></pre>
+<ul>
+  <li>The <b>first</b> command copies your cookie file to the box.</li>
+  <li>The <b>second</b> tells the box to use it, set your playlist, restart, and then
+      delete the copied cookie.</li>
+  <li>If it asks <i>"Are you sure you want to continue connecting?"</i> type <b>yes</b>.</li>
+  <li>If it asks for a <b>password</b>, type the box's password (ask whoever gave you
+      the box). You won't see the characters as you type — that's normal.</li>
+</ul>
+<p>When it finishes you'll see lines like <code>==&gt; writing auth file</code>,
+<code>==&gt; playlist set</code>, and <code>==&gt; restarting Mopidy</code>.</p>
+
+<div class="step"><div class="num">4</div><h2>Watch it come alive</h2></div>
+<p>Look at the button's light over the next minute. It should go:</p>
+<p><span class="dot m"></span>magenta &nbsp;→&nbsp; <span class="dot b"></span>blue
+(starting up) &nbsp;→&nbsp; <span class="dot g"></span><b>gently breathing green = playing!</b></p>
+<p>Plug in headphones (or listen on the speaker) — your playlist is shuffling. 🎉
+You're done; you never have to do this again unless the light turns magenta.</p>
+
+<h2>How to use it</h2>
+<table>
+  <tr><th>Do this to the button</th><th>What happens</th></tr>
+  <tr><td><b>Press once</b></td><td>Pause / unpause</td></tr>
+  <tr><td><b>Press twice quickly</b></td><td>Skip to the next song</td></tr>
+  <tr><td><b>Press &amp; hold (~2 sec)</b></td><td>Safe shutdown. The light turns
+      <span class="dot w"></span>white — once it's white it's safe to unplug.
+      <b>Always do this before pulling the power</b>, so the box doesn't get corrupted.</td></tr>
+</table>
+
+<h3>What the light colors mean</h3>
+<table>
+  <tr><th>Light</th><th>Meaning</th></tr>
+  <tr><td><span class="dot g"></span>Breathing green</td><td>Playing music</td></tr>
+  <tr><td><span class="dot a"></span>Steady amber</td><td>Paused</td></tr>
+  <tr><td><span class="dot b"></span>Blinking blue</td><td>Starting up, or Wi-Fi/Internet not ready (give it a minute)</td></tr>
+  <tr><td><span class="dot m"></span>Blinking magenta</td><td>Needs your YouTube login — redo Steps 2 &amp; 3</td></tr>
+  <tr><td><span class="dot r"></span>Blinking red</td><td>The music service isn't responding — try a power-cycle (shut down first!)</td></tr>
+  <tr><td><span class="dot w"></span>Solid white</td><td>Shutting down — safe to unplug</td></tr>
+</table>
+
+<h2>If something goes wrong</h2>
+<ul>
+  <li><b>"Could not resolve hostname walkman-a.local"</b> — the box isn't on the network
+      yet (wait a minute after plugging in), or you're on a different Wi-Fi than the box.</li>
+  <li><b>"no usable auth cookie"</b> — the export didn't include the login. Make sure you
+      were <b>signed in</b> at music.youtube.com, then redo Step 2.</li>
+  <li><b>Light goes magenta later</b> — your cookie expired (totally normal). Just redo
+      Steps 2 &amp; 3 (you can leave off <code>--playlist</code> if your playlist hasn't changed).</li>
+  <li><b>Stuck?</b> Power-cycle: hold the button until white, unplug, wait 5 seconds, plug
+      back in.</li>
+</ul>
+
+<footer>Walkman — a one-button YouTube Music player. You taught a tiny computer to play
+your music. Nice work. 🛠️🎶</footer>
+</div>
+</body>
+</html>

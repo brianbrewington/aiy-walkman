@@ -21,6 +21,7 @@ Runs as root (GPIO + LED sysfs + poweroff). Usage: controller.py [walkman.toml]
 """
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
 import sys
@@ -48,12 +49,26 @@ def log(msg: str) -> None:
     print(f"[walkman-controller] {msg}", flush=True)
 
 
+def decide_mode(auth_exists: bool, mopidy_ready: bool, wifi_ok: bool,
+                state, unreachable_seconds: float, error_after_s: float = ERROR_AFTER_S) -> str:
+    """Pure player/system state -> LED mode (unit-tested)."""
+    if not auth_exists:
+        return led.REAUTH                      # no YT auth file -> "set me up" (magenta)
+    if not mopidy_ready:
+        return led.ERROR if unreachable_seconds >= error_after_s else led.STARTUP
+    if not wifi_ok:
+        return led.STARTUP                     # blue: wifi/internet down (recovers)
+    return led.PLAYING if state == "playing" else led.PAUSED
+
+
 class Controller:
     def __init__(self, cfg: dict):
         self.cfg = cfg
         rpc = cfg.get("mopidy", {}).get("rpc_url", "http://127.0.0.1:6680/mopidy/rpc")
         self.mopidy = MopidyClient(rpc_url=rpc, timeout=8.0)
         self.button_cfg = cfg.get("button", {})
+        self.auth_file = cfg.get("auth", {}).get(
+            "file", "/home/brew/.config/walkman/ytmusic-auth.json")
         led_cfg = cfg.get("led", {})
         self.led = led.LedStatus(
             max_brightness=float(led_cfg.get("max_brightness", 0.65)),
@@ -127,21 +142,25 @@ class Controller:
             if tick % WIFI_CHECK_EVERY == 1:
                 wifi_ok = self._wifi_ok()
 
-            if not self.mopidy.is_ready():
-                now = time.monotonic()
+            ready = self.mopidy.is_ready()
+            now = time.monotonic()
+            if not ready:
                 if unreachable_since is None:
                     unreachable_since = now
-                mode = led.ERROR if (now - unreachable_since) >= ERROR_AFTER_S else led.STARTUP
+                unreachable_seconds = now - unreachable_since
             else:
                 unreachable_since = None
-                if not wifi_ok:
-                    mode = led.STARTUP            # blue: wifi/internet down (recovers)
-                else:
-                    try:
-                        state = self.mopidy.get_state()
-                    except MopidyError:
-                        state = None
-                    mode = led.PLAYING if state == "playing" else led.PAUSED
+                unreachable_seconds = 0.0
+
+            state = None
+            if ready:
+                try:
+                    state = self.mopidy.get_state()
+                except MopidyError:
+                    state = None
+
+            mode = decide_mode(os.path.exists(self.auth_file), ready, wifi_ok,
+                               state, unreachable_seconds)
             self.led.set_mode(mode)
             self._stop.wait(1.0)
 
