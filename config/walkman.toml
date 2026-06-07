@@ -19,4 +19,6 @@ gpio = 23                            # BUTTON_GPIO (the bonnet's arcade button)
 long_press_seconds = 1.2             # hold this long -> safe shutdown
 double_click_window_seconds = 0.35   # second press within this -> "double"
 
-# Future: [led] colors / pulse speed (Step 4).
+[led]
+max_brightness = 0.65            # global dimmer (0..1) — keep it calm for kids
+breathe_period_seconds = 4.0     # "playing" green breathing cycle length
