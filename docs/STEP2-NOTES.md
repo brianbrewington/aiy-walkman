@@ -28,6 +28,17 @@ active, autoplay `Result=success`, `state=playing`).
 - **Volume default lowered −6 dB** (Speaker 39→35 = +6 dB; Headphone 30→26 = −7.5 dB),
   persisted via `alsactl store`.
 
+## Headphone auto-switch (added 2026-06-07, verified)
+- **`src/walkman/jack_monitor.py`** + **`systemd/walkman-jack.service`** (runs as root):
+  watches the bonnet's Headphone Jack input (`SW_HEADPHONE_INSERT`) and flips
+  `Speaker Switch` — headphones in → speaker OFF; out → speaker ON. Event-driven
+  (blocks on `/dev/input/event*`), stdlib only, finds the jack device by name
+  (index-independent), sets initial state via `evtest --query`.
+- Verified live both directions: unplug → speaker ON, plug in → speaker OFF.
+  (Confirmed the empty-jack state reads correctly — speaker on.)
+- Default volume lowered a second −6 dB on 2026-06-07: Speaker 31 (0 dB),
+  Headphone 22 (−13.5 dB), persisted.
+
 ## Carry-forward / hardening
 - **yt-dlp JS-runtime warning:** "No supported JavaScript runtime… some formats may
   be missing." Streaming works, but installing a JS runtime (e.g. `deno`) would make
