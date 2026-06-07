@@ -42,6 +42,28 @@ Captured ideas beyond the core build (Steps 0–5). Not committed to a timeline.
   and exposed to upstream drift. Likely: setup.sh as source of truth + an image as a
   convenience snapshot.
 
+## Known limitation — jack detection at boot (Step 5 hardening)
+
+**Symptom:** if the device boots/reboots with a plug **already in** the 3.5mm jack,
+the RT5645 jack-detect reads **"empty"** (edge-driven detection misses a
+plug-present-at-init), so audio mis-routes to the **speaker** until you physically
+unplug + replug (which generates a fresh insert edge that the auto-switch catches
+correctly). Live insert/remove works perfectly; only the initial condition is wrong.
+(Verified 2026-06-07: plug was in across reboots, `evtest --query` read empty; a
+pull+reinsert immediately flipped to inserted and routed to headphones.)
+
+This is a hardware/driver quirk, not our state machine — `jack_monitor` *does* query
+the initial state; the hardware just reports it stale.
+
+Candidate fixes to try (need a reboot-with-plug-in test to validate):
+- Read the `iface=CARD,name='Headphone Jack'` kcontrol at startup instead of/along
+  with the input SW (it tracks state — unknown if it's reliable at boot; likely same
+  limitation since same source).
+- Force the codec to re-run jack detection at startup (RT5645 jd register poke / re-
+  trigger), so a present-at-boot plug is evaluated.
+- Accept + document: if booted with headphones in, replug once. (Lowest effort;
+  acceptable if kids usually power on with nothing plugged, then add headphones.)
+
 ## Notes
 - These reinforce the value of the **pluggable input layer + bidirectional CPX
   serial channel** already in the design: volume, repeat-track, and a now-playing
