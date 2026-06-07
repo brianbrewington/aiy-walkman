@@ -32,6 +32,16 @@ Captured ideas beyond the core build (Steps 0–5). Not committed to a timeline.
   Want a simple, guided refresh flow (e.g. a tiny local web page on the device, or a
   one-command wrapper) that takes a fresh cookie and drops it in the right place +
   restarts Mopidy. Ties to the magenta "needs re-auth" LED state.
+- **Detect a present-but-DEAD cookie → magenta.** Today `decide_mode` only checks
+  whether the auth *file exists*; an expired/invalidated cookie (file present, but
+  YouTube returns `logged_in: 0`) shows amber/red, not magenta — so the device can't
+  tell the kid "log me in again." Add a lightweight auth-validity probe (e.g. a cheap
+  authenticated ytmusicapi call, or watch Mopidy for repeated `logged_in: 0` /
+  `Cannot load` playlist errors) and drive the **magenta** "needs re-auth" state from
+  it. Discovered in field test #1 (WORKLOG §13): cookies die fast when the source
+  browser keeps rotating `__Secure-*PSIDTS` (e.g. multiple open YouTube tabs); the
+  durable mitigation is **export in Incognito then close it** + prefer a personal
+  (non-Workspace) account, now documented in the setup guide + README.
 - **Bulletproof new-unit bring-up from scratch.** Decide the provisioning model:
   either (a) capture a golden **SD-card image** (everything installed) that's flashed
   per unit, then a tiny one-time per-device step (drop in that account's oauth/cookie

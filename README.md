@@ -59,6 +59,15 @@ see `docs/WORKLOG.md`). Cookies expire periodically; when they do, the LED blink
 export `music.youtube.com` cookies with the open-source **"Get cookies.txt LOCALLY"**
 browser extension.
 
+> **Export from an Incognito window, then close it — this is the difference between a
+> cookie that lasts weeks and one that dies in an hour.** Google rotates the
+> `__Secure-*PSIDTS` session cookies as you browse; if you export from your normal
+> window and keep using YouTube, the snapshot on the device is invalidated server-side
+> almost immediately (we hit exactly this in field test #1 — a complete, valid export
+> that authenticated fine, then went dead within the hour). An Incognito session you
+> close right after exporting isn't rotated out from under the box. Prefer a **personal**
+> Google account; Workspace/school accounts may enforce short, device-bound sessions.
+
 **Provision an account (or refresh it):**
 ```bash
 # on the Pi (cookies.txt already copied over):

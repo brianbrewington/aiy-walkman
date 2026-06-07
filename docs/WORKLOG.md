@@ -1019,6 +1019,32 @@ the *old* line `KeyError`s on a missing author while the *new* one returns `[]`.
 Reinforces the §12 ethos: the device and the docs should *teach and reassure*. A
 first-timer hitting a real upstream bug should never read as "you broke it."
 
+**...and then the cookie died (the deeper lesson).** Patching the `author` crash
+uncovered a second failure: requests came back `logged_in: 0` and ytmusicapi hit the
+logged-out `twoColumnBrowseResultsRenderer` shape (`KeyError: 'contents'`). The auth
+file was *complete* — all 23 cookies including `__Secure-1PSID/3PSID` and the rotating
+`__Secure-*PSIDTS` — and it had authenticated fine at setup *and* in a test ~50 min
+later (read 8 library playlists), then went fully dead (library → 0 items,
+`get_account_info` → logged-out). A freshly recomputed `SAPISIDHASH` didn't help, so it
+wasn't the hash: **Google invalidated the session server-side.**
+
+Cause: the `__Secure-*PSIDTS` cookies rotate as you browse YouTube; the device holds a
+*frozen snapshot*, and once the live browser rotates past it, the snapshot is rejected.
+**Brian's key observation:** Nathan had **multiple YouTube tabs open**, Brian had none —
+so Nathan's session rotated out in minutes while Brian's (idle) survived the hour+ of
+the family demo. Same mechanism, different speed.
+
+Durable fix (now in the guide + README): **export from an Incognito window, then close
+it immediately** — an Incognito session that's closed isn't rotated out from under the
+box, so the cookie lasts weeks. Also prefer a **personal** Google account (Workspace/
+school accounts can enforce short, device-bound sessions; the field-test Mac user was
+literally `workaccount`).
+
+Open robustness gap (→ IDEAS): a *present-but-dead* cookie currently shows amber/red,
+not **magenta** — `decide_mode` only checks whether the auth *file exists*. Detecting a
+rejected-auth condition and surfacing magenta ("set me up again") would make this
+self-explanatory on the device.
+
 ---
 
 *Source notes this log synthesizes: `MEMORY.md` and the project memory files;
