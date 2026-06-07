@@ -888,7 +888,46 @@ Conclusions are cheap; the methods are reusable. These are the exact techniques 
 
 ---
 
-## 12. References / external links
+## 12. Teaching by design — the tool is the lesson
+
+A deliberate goal emerged late in the build (Brian's framing: *"treat these
+instructions as a learning exercise: teach the kid what a cookie is"*): the handoff
+shouldn't just **work**, it should **teach**. The installer is a 15-year-old doing it
+solo, no expert in the loop — so every necessary step is also a teachable moment, and
+we favor **honesty over hidden magic**.
+
+How that shows up in `docs/INSTALL.html` (the interactive setup guide):
+- **"Why?" callouts in-context** — what a *cookie* is, what a *playlist ID* is, what
+  *Terminal/SSH* is — explained right where you use them, not in a glossary you skip.
+- **Live cookie demo** — "Bake a cookie" / "Read cookies" actually set and read
+  `document.cookie` on the page, so the learner *sees* what a cookie is and exactly
+  what the exporter extension reads. The browser blocking that cookie on a `file://`
+  page isn't hidden — the page explains it as a **real cookie-security rule**. Turning
+  a limitation into a lesson is the whole ethos.
+- **Learn-by-doing command builder** — typing your playlist/box/cookie-file fills the
+  exact `scp`/`ssh` commands (with Copy buttons). Less error-prone *and* you see how
+  your inputs map to what the machine does.
+- **Persistence that's also a second cookie lesson** — inputs are saved cookie-first
+  (with a `localStorage` fallback), refilled on load, and the page tells you which
+  store it used. It both remembers your playlist for re-auth and reinforces "this is a
+  cookie doing its job."
+
+And the **device itself teaches**, not just the guide:
+- **The LED is a readable status language** — green=playing, amber=paused, blue=
+  starting/wifi, **magenta="set me up / re-login"**, red=service down, white=safe to
+  unplug. A kid learns to *read the machine's state* and the cause→action it implies
+  (magenta → run the cookie step). The magenta-on-missing-auth signal (§ controller)
+  exists largely to make the handoff self-explanatory.
+- **Safe-shutdown discipline** — "hold until white, then unplug" teaches *why* clean
+  shutdown matters (SD-card corruption) through a physical, repeatable ritual.
+- **One button, clear gestures** — immediate cause/effect with no manual.
+
+Design principle for future additions: if a step is unavoidable, make it explain
+itself; if a workaround is needed, surface the reason rather than burying it.
+
+---
+
+## 13. References / external links
 
 **Drivers & hardware**
 
