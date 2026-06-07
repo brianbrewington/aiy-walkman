@@ -89,6 +89,17 @@ box saying: <em>"I don't have a YouTube Music login yet — set me up!"</em></p>
   <div class="hint">Leave as <code>walkman-a.local</code> unless you were told otherwise. <span id="box-saved" class="saved"></span></div>
 </div>
 
+<h2>Before you start</h2>
+<ul>
+  <li>The box <b>plugged in</b> and on your <b>Wi-Fi</b> (it joins automatically; give it a minute after powering on).</li>
+  <li>A <b>Mac</b> with the <b>Terminal</b> app (Windows works too, but the commands differ).</li>
+  <li>A <b>YouTube Music account</b> you can sign into.</li>
+  <li><b>Install the cookie helper now</b> — add the free, open-source extension
+      <b>"Get cookies.txt LOCALLY"</b> to your browser from its extension store.
+      ("Locally" = it reads cookies on your own computer and sends them nowhere.)
+      Doing it now makes Step 2 a single click.</li>
+</ul>
+
 <h2>First, what's a "cookie"? (try it live 🍪)</h2>
 <div class="why"><b>Why this matters:</b> When you log into a website, your browser
 saves a tiny secret note called a <b>cookie</b>. Each time you come back, the browser
@@ -97,13 +108,11 @@ box can't open a browser, so we'll copy <b>your YouTube Music cookie</b> onto it
 can play music as you. The little tool below shows exactly what a cookie is.</div>
 
 <div class="demo">
-<h3>🍪 Live cookie demo</h3>
-<p>Click <b>Bake a cookie</b> — the page stores a note in <em>your</em> browser. Then
-<b>Read cookies</b> shows what's stored (this is exactly what the "cookie exporter"
-extension reads in Step 2, except your real one proves it's you).</p>
-<button class="btn" onclick="bakeCookie()">Bake a cookie</button>
-<button class="btn alt" onclick="readCookies()">Read cookies (what the extension sees)</button>
-<div id="cookie-out" class="out">(click a button)</div>
+<h3>🍪 Try it — see a cookie for yourself</h3>
+<p>Totally harmless — this won't touch any of your real accounts. Click the button: the
+page stores a tiny note in your browser and reads it right back. That's all a cookie is.</p>
+<button class="btn" onclick="cookieDemo()">Show me 🍪</button>
+<div id="cookie-out" class="out">(click the button above)</div>
 </div>
 
 <div class="warn">⚠️ Because a real login cookie is like a key to your account, never
@@ -127,10 +136,9 @@ box needs it to know what to play.</div>
 
 <div class="step"><div class="num">2</div><h2>Export your cookie</h2></div>
 <ol>
-  <li>In <b>Chrome</b> (or Edge/Firefox), install the free, open-source extension
-      <b>"Get cookies.txt LOCALLY"</b>. ("Locally" = it reads cookies on your own
-      computer and sends them nowhere.)</li>
-  <li>Go to <a href="https://music.youtube.com" target="_blank">music.youtube.com</a>, still <b>signed in</b>.</li>
+  <li>Go to <a href="https://music.youtube.com" target="_blank">music.youtube.com</a>,
+      <b>signed in</b> (you added the "Get cookies.txt LOCALLY" extension in
+      "Before you start").</li>
   <li>Click the extension → <b>Export</b>. It saves a file to your <b>Downloads</b>,
       usually <code>music.youtube.com_cookies.txt</code>. If yours is named differently,
       type the exact name here:</li>
@@ -235,29 +243,26 @@ function load(k) {
   try { return localStorage.getItem(k); } catch (e) { return null; }
 }
 
-// ---- live cookie demo ----
-function bakeCookie() {
-  setCookieRaw('walkman_demo_login', 'this-proves-its-me-' + Date.now());
-  var got = getCookieRaw('walkman_demo_login');
+// ---- live cookie demo (always succeeds + reassures; never an "uh oh") ----
+function cookieDemo() {
   var out = document.getElementById('cookie-out');
-  if (got) {
-    out.textContent = "🍪 Baked! The browser stored:\n  walkman_demo_login = " + got +
-      "\nYour real YouTube cookie works the same way — it proves it's you.";
-  } else {
-    out.textContent = "Your browser BLOCKED that cookie because this page is a local file " +
-      "(file://). Cookies have strict rules about who may set them — that's a real " +
-      "security feature! On an actual website (like music.youtube.com) it works fine.";
-  }
-}
-function readCookies() {
-  var out = document.getElementById('cookie-out');
-  var all = '';
-  try { all = document.cookie; } catch (e) {}
-  out.textContent = all
-    ? "Cookies this page can see (this is what the exporter extension reads):\n  " +
-      all.split('; ').join('\n  ')
-    : "No cookies visible here (local files are restricted). On music.youtube.com the " +
-      "extension would see your login cookies and export them to the file in Step 2.";
+  var note = 'remember-me-' + new Date().toLocaleTimeString();
+  setCookieRaw('walkman_demo', note);
+  var viaCookie = getCookieRaw('walkman_demo') === note;
+  var readback = note;                          // we just stored it, so this is what comes back
+  if (!viaCookie) { try { localStorage.setItem('walkman_demo', note); } catch (e) {} }
+  var where = viaCookie
+    ? "as a cookie 🍪"
+    : "in your browser's localStorage (its other little storage box — same idea)";
+  out.textContent =
+    "✅ Your browser kept this note and handed it right back:\n" +
+    "    walkman_demo = " + readback + "\n\n" +
+    "That's all a cookie is — a little note a site stores so it remembers you. Your " +
+    "YouTube login is one of these, and the Step 2 extension simply reads it and saves " +
+    "it to a file.\n\n" +
+    "(Saved here " + where + ". On a local file like this page, browsers often use " +
+    "localStorage instead of a cookie — totally normal, nothing's broken. On a real " +
+    "site like music.youtube.com it's a real cookie.)";
 }
 
 // ---- live command generation + field persistence ----

@@ -896,14 +896,17 @@ shouldn't just **work**, it should **teach**. The installer is a 15-year-old doi
 solo, no expert in the loop — so every necessary step is also a teachable moment, and
 we favor **honesty over hidden magic**.
 
-How that shows up in `docs/INSTALL.html` (the interactive setup guide):
+How that shows up in `docs/SETUP_PLAYLIST_AND_COOKIES.html` (the interactive setup guide):
 - **"Why?" callouts in-context** — what a *cookie* is, what a *playlist ID* is, what
   *Terminal/SSH* is — explained right where you use them, not in a glossary you skip.
-- **Live cookie demo** — "Bake a cookie" / "Read cookies" actually set and read
-  `document.cookie` on the page, so the learner *sees* what a cookie is and exactly
-  what the exporter extension reads. The browser blocking that cookie on a `file://`
-  page isn't hidden — the page explains it as a **real cookie-security rule**. Turning
-  a limitation into a lesson is the whole ethos.
+- **Live cookie demo** — a "Show me 🍪" button stores a note and reads it right back so
+  the learner *sees* what a cookie is and what the exporter extension reads. Early
+  testing showed the original demo's "your browser BLOCKED this on file://" message
+  read as *"uh oh, it's broken."* Lesson learned: the demo now **always succeeds and
+  reassures** — it silently falls back to localStorage when `file://` blocks cookies,
+  shows a green ✅ readback, and frames the storage difference as "totally normal,
+  nothing's broken" (the security nuance is mentioned, not alarming). Reassurance beat
+  the cleverer "turn the block into a lesson" framing.
 - **Learn-by-doing command builder** — typing your playlist/box/cookie-file fills the
   exact `scp`/`ssh` commands (with Copy buttons). Less error-prone *and* you see how
   your inputs map to what the machine does.

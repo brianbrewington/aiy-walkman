@@ -66,7 +66,7 @@ Candidate fixes to try (need a reboot-with-plug-in test to validate):
 
 ## Full username genericity (beyond the install guide)
 
-The install guide (`docs/INSTALL.html`) now takes the box username as a field, so the
+The install guide (`docs/SETUP_PLAYLIST_AND_COOKIES.html`) now takes the box username as a field, so the
 `scp`/`ssh` commands aren't hardcoded to `brew`. But the rest of the system still
 assumes `brew`:
 - `setup.sh` honors a `WALKMAN_USER` env var but defaults to `brew`, and warns if the

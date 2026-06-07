@@ -38,9 +38,16 @@ Music playlist. A single arcade button + its built-in RGB LED are the only I/O.
 4. Set **this unit's account** (cookies + playlist) — see next section.
 5. Power-cycle → it boots into that kid's music.
 
+> **Each unit needs a unique hostname** (`walkman-a`, `walkman-b`, …) — two boxes with
+> the same name collide on the network (both answer to `walkman-a.local`). Set it in
+> rpi-imager (step 1) or with `walkman-account.sh --hostname walkman-b` (step 4).
+>
 > **Golden-image option:** after steps 1–4 on one unit, `dd` its SD card as a template;
-> a new unit is then just *flash the image + step 4* (swap the account). `setup.sh`
-> remains the versioned source of truth; the image is a convenience snapshot.
+> a new unit is then *flash the image* → **rename the host first** (it inherits the
+> template's name!) → *step 4* (swap the account). Rename via
+> `sudo hostnamectl set-hostname walkman-b` (or `walkman-account.sh --hostname`), then
+> reboot. `setup.sh` remains the versioned source of truth; the image is a convenience
+> snapshot.
 
 ## YouTube Music auth (per device) + re-auth ("cookie-monster")
 Auth is **per device** (each unit can be a different kid's account). It uses a
@@ -112,7 +119,11 @@ JSON-RPC client, autoplay, and the YouTube auth converter — including regressi
 guards for the bugs we hit (next-on-paused→silence, single-vs-double, SAPISIDHASH).
 
 ## Docs map
+- `docs/SETUP_PLAYLIST_AND_COOKIES.html` — the **hand-to-a-kid** interactive setup guide
+  (playlist + cookies; open in a browser)
 - `docs/WORKLOG.md` — full chronological build narrative + gotchas (read this if stuck)
+- `docs/POWER-LOSS.md` — safe-shutdown + overlayfs resilience
+- `docs/ROBUSTNESS-NOTES.md` — tests + the robustness pass
 - `docs/STEP0-NOTES.md … STEP5-NOTES.md` — per-step detail
 - `docs/IDEAS.md` — backlog / deferred robustness / future features
 - `docs/PLAN.md` — the build plan
