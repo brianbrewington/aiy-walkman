@@ -4,6 +4,11 @@
 *.pat
 *secret*
 oauth.json
+ytmusic-auth.json
+copied_as_curl.txt
+*.curl
+*cookies*.txt
+*curl*.txt
 
 # Python
 __pycache__/

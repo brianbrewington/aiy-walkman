@@ -173,7 +173,9 @@ the LED can't be driven cleanly, stop.
 ### Step 4 — LED status + breathing (`led.py`)
 - State→color: **playing** green sine-breathing; **paused** amber steady;
   **startup/wifi-down/mopidy-unreachable** blue blink; **error** (mopidy down after
-  retries) red blink; **shutting down** a distinct cue (e.g. magenta/white steady or
+  retries) red blink; **auth expired / needs re-login** distinct slow **magenta
+  blink** (cookie/header auth expires periodically — surface it on the LED so the
+  user knows to re-auth); **shutting down** a distinct cue (e.g. magenta/white steady or
   slow fade-to-off) held until poweroff so it's safe to cut power. Breathing =
   lightweight sine over brightness at ~20–30 fps *only while playing* (no FFT);
   steady/blink states need no tight loop. Player state polled at ~1 Hz via JSON-RPC;
