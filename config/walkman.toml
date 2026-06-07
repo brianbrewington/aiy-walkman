@@ -1,0 +1,17 @@
+# Walkman user settings (per-device).
+# To provision another unit: change the playlist id below, drop in that unit's
+# YouTube Music auth file, and set the hostname — nothing else.
+
+[playlist]
+# YouTube Music playlist ID — the `list=` value from the playlist URL.
+id = "PL5bKS0Bw-MfRrtcFhf0SQeo-evkVM8Wgx"
+
+[playback]
+random = true      # shuffle
+repeat = true      # loop the playlist
+consume = false    # don't remove tracks as they play
+
+[mopidy]
+rpc_url = "http://127.0.0.1:6680/mopidy/rpc"
+
+# Future sections (button thresholds, LED colors/pulse) will be added in later steps.

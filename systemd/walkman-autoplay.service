@@ -1,0 +1,19 @@
+[Unit]
+Description=Walkman: auto-play the configured playlist on boot
+Requires=walkman-mopidy.service
+After=walkman-mopidy.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=brew
+Group=audio
+Environment=HOME=/home/brew
+# Waits for Mopidy + network, loads the playlist, shuffle+repeat, and plays.
+# Has its own retry/backoff, so give it room before systemd calls it failed.
+ExecStart=/usr/bin/python3 /home/brew/walkman/src/walkman/autoplay.py /home/brew/walkman/config/walkman.toml
+TimeoutStartSec=300
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

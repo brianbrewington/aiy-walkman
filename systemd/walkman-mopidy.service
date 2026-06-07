@@ -1,0 +1,17 @@
+[Unit]
+Description=Walkman: Mopidy (YouTube Music) audio server
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as the brew user (reuses the verified config, YT auth, and audio access).
+User=brew
+Group=audio
+Environment=HOME=/home/brew
+ExecStart=/usr/bin/mopidy --config /home/brew/.config/mopidy/mopidy.conf
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
