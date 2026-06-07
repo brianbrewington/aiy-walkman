@@ -9,6 +9,9 @@ Type=simple
 User=brew
 Group=audio
 Environment=HOME=/home/brew
+# Shim dir holds sitecustomize.py which forces yt-dlp's android player client
+# (avoids YouTube JS signature-solving -> fixes `next` and avoids a segfault).
+Environment=PYTHONPATH=/home/brew/walkman/shim
 ExecStart=/usr/bin/mopidy --config /home/brew/.config/mopidy/mopidy.conf
 Restart=always
 RestartSec=5

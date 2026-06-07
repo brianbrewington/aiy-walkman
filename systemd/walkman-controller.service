@@ -1,0 +1,15 @@
+[Unit]
+Description=Walkman: button controller (gestures -> player actions)
+After=walkman-mopidy.service
+Wants=walkman-mopidy.service
+
+[Service]
+Type=simple
+# root: needs GPIO (button), LED sysfs, and poweroff. Mopidy is reached over HTTP.
+User=root
+ExecStart=/usr/bin/python3 /home/brew/walkman/src/walkman/controller.py /home/brew/walkman/config/walkman.toml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

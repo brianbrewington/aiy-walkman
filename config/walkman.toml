@@ -14,4 +14,9 @@ consume = false    # don't remove tracks as they play
 [mopidy]
 rpc_url = "http://127.0.0.1:6680/mopidy/rpc"
 
-# Future sections (button thresholds, LED colors/pulse) will be added in later steps.
+[button]
+gpio = 23                            # BUTTON_GPIO (the bonnet's arcade button)
+long_press_seconds = 1.2             # hold this long -> safe shutdown
+double_click_window_seconds = 0.35   # second press within this -> "double"
+
+# Future: [led] colors / pulse speed (Step 4).
