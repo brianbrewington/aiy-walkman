@@ -96,7 +96,7 @@ class Controller:
     def safe_shutdown(self) -> None:
         log("LONG PRESS -> safe shutdown")
         self._shutting_down = True
-        self.led.set_mode(led.SHUTDOWN)   # solid white until power cuts
+        self.led.force_mode(led.SHUTDOWN)  # latch white so the poller can't override it
         time.sleep(0.3)                   # let the LED latch white first
         subprocess.run(["sync"])
         subprocess.run(["systemctl", "poweroff"])

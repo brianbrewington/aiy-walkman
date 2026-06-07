@@ -83,14 +83,28 @@ class LedStatus(threading.Thread):
         self.breathe_period_s = breathe_period_s
         self.log = log
         self._mode = STARTUP
+        self._latched = False
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._last_rgb = None
 
     def set_mode(self, mode: str) -> None:
         with self._lock:
+            if self._latched:
+                return  # a latched mode (e.g. shutdown) wins over status updates
             if mode != self._mode:
                 self._mode = mode
+
+    def force_mode(self, mode: str) -> None:
+        """Set a mode that can't be overridden by later set_mode calls.
+
+        Used for the shutdown cue: otherwise an in-flight status-poller tick can
+        race and flip the LED back (white flashes, then reverts). Latching keeps
+        white solid until power cuts.
+        """
+        with self._lock:
+            self._mode = mode
+            self._latched = True
 
     def stop(self) -> None:
         self._stop.set()
