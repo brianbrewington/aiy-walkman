@@ -4,11 +4,16 @@ A screen-free YouTube Music player for kids on a **Raspberry Pi Zero 2 W** + **G
 AIY Voice Bonnet**. Boots straight into shuffle-playing one playlist; a single arcade
 button + its RGB LED are the only I/O.
 
-> **Status (2026-06-06): Step 0 complete.** Bonnet audio (RT5645 — internal speaker
-> *and* 3.5mm headphones) and the button RGB LED (bound `leds-ktd202x` driver) are
-> brought up and verified on real hardware, including across reboot. See
-> [`docs/STEP0-NOTES.md`](docs/STEP0-NOTES.md). Application software (Mopidy/YTMusic,
-> button gestures, LED status, services) is next — see [`docs/PLAN.md`](docs/PLAN.md).
+> **Status (2026-06-06): Steps 0 & 1 complete.**
+> - **Step 0:** bonnet audio (RT5645 — internal speaker *and* 3.5mm headphones) and
+>   the button RGB LED (bound `leds-ktd202x` driver), verified on hardware incl.
+>   across reboot — [`docs/STEP0-NOTES.md`](docs/STEP0-NOTES.md).
+> - **Step 1:** Mopidy + Mopidy-YouTube streaming an authenticated YouTube Music
+>   playlist (user's subscription) through the bonnet — proven end-to-end —
+>   [`docs/STEP1-PROGRESS.md`](docs/STEP1-PROGRESS.md).
+>
+> Next: boot service + autoplay, button gestures, LED status, hardening — see
+> [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Hardware / OS
 - Pi Zero 2 W, Raspberry Pi OS Lite 64-bit (Bookworm), kernel `6.12.87+rpt-rpi-v8`.

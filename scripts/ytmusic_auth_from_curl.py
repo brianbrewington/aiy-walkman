@@ -20,10 +20,12 @@ Usage:
 Then copy the JSON to the Pi at the path mopidy.conf points to.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
+import time
 
 DEFAULT_OUT = os.path.expanduser("~/.config/walkman/ytmusic-auth.json")
 
@@ -84,6 +86,28 @@ def has_sapisid(cookie):
     return "SAPISID" in cookie or "__Secure-3PAPISID" in cookie
 
 
+def sapisid_from_cookie(cookie):
+    """Pull the SAPISID value out of a Cookie header (matches ytmusicapi)."""
+    jar = {}
+    for part in cookie.split(";"):
+        if "=" in part:
+            k, _, v = part.strip().partition("=")
+            jar[k] = v
+    return jar.get("SAPISID") or jar.get("__Secure-3PAPISID") or jar.get("__Secure-1PAPISID")
+
+
+def get_authorization(sapisid, origin="https://music.youtube.com"):
+    """Compute a SAPISIDHASH 'authorization' value (same algorithm as ytmusicapi).
+
+    ytmusicapi 1.x only classifies an auth file as BROWSER (vs OAuth) when an
+    'authorization' header containing 'SAPISIDHASH' is present next to the cookie;
+    it then recomputes this value per request, so freshness here doesn't matter.
+    """
+    ts = str(int(time.time()))
+    digest = hashlib.sha1(f"{ts} {sapisid} {origin}".encode("utf-8")).hexdigest()
+    return f"SAPISIDHASH {ts}_{digest}"
+
+
 def main():
     ap = argparse.ArgumentParser(description="Make a ytmusicapi auth JSON from cURL or cookies.txt.")
     ap.add_argument("-o", "--output", default=DEFAULT_OUT)
@@ -117,6 +141,16 @@ def main():
                   "Use a cookies.txt export instead.", file=sys.stderr)
         print("ERROR: no usable auth cookie (need SAPISID / __Secure-3PAPISID).", file=sys.stderr)
         sys.exit(1)
+
+    # Ensure ytmusicapi classifies this as BROWSER auth (needs an
+    # 'authorization: SAPISIDHASH...' header alongside the cookie) + origin.
+    sapisid = sapisid_from_cookie(cookie)
+    if not sapisid:
+        print("ERROR: cookie has no SAPISID/__Secure-3PAPISID value.", file=sys.stderr)
+        sys.exit(1)
+    headers["authorization"] = get_authorization(sapisid)
+    headers.setdefault("origin", "https://music.youtube.com")
+    headers.setdefault("x-origin", "https://music.youtube.com")
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w") as f:

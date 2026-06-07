@@ -1,6 +1,10 @@
-# Walkman — Step 1 progress notes (paused 2026-06-06 evening)
+# Walkman — Step 1 notes
 
-**Status: Step 1 (Mopidy + YouTube Music) in progress — paused at the YTMusic auth step.**
+**Status: Step 1 (Mopidy + YouTube Music) — ✅ PASSED 2026-06-06.**
+Proven end-to-end on hardware: authenticated YouTube Music (user's subscription) →
+playlist (24 tracks loaded) → yt-dlp → GStreamer → AIY bonnet, audible. Verified
+`state=playing`, real track ("More To This" – Marc Scibilia), position advancing,
+user confirmed audio. Shuffle+repeat on, consume off.
 
 ## Done so far
 
@@ -34,24 +38,42 @@
   diagnostics (header names / cookie length), never secrets. Writes to
   `~/.config/walkman/ytmusic-auth.json` (mode 600).
 
-## RESUME HERE TOMORROW (auth is basically solved)
+## How auth was solved (and the gotcha)
 
-- Chrome "Copy as cURL" **redacts the cookie** (confirmed) — cURL route dead here.
-- **cookies.txt route works:** user installed "Get cookies.txt LOCALLY" and the
-  converter produced a valid auth JSON locally ("it works"). What's left is just
-  **deploying it to the Pi** — `ytmusic-auth.json` is **NOT on the Pi yet** (verified).
-- A loose `copied_as_curl.txt` (contained a cookie) was found in the repo dir,
-  git-excluded, and **deleted**. (Auth-secret patterns are now in `.gitignore`.)
+- Chrome "Copy as cURL" **redacts the cookie** here — dead end. Used the
+  **cookies.txt** route ("Get cookies.txt LOCALLY" extension → export → converter).
+- **Gotcha that cost the most time:** ytmusicapi 1.12 classifies an auth file as
+  BROWSER only if it has an **`authorization` header containing `SAPISIDHASH`** next
+  to the `cookie` (`is_browser` needs both; `determine_auth_type` keys off
+  `SAPISIDHASH`). Without it, it assumes OAuth and errors ("oauth JSON provided …
+  oauth_credentials not provided"). ytmusicapi *recomputes* that hash per request
+  (`ytmusic.py:180`), so the file just needs one present at generation time.
+- `scripts/ytmusic_auth_from_curl.py` now computes & injects that `authorization`
+  header (+ origin/x-origin). So the documented re-auth procedure is simply:
 
-**Step 1, first command tomorrow** (re-export cookies.txt if the old one is stale —
-cookies last a while, so last night's file is probably still fine):
-```bash
-python3 /Users/brew/Code/walkman/scripts/ytmusic_auth_from_curl.py \
-    -o /tmp/ytmusic-auth.json < ~/Downloads/music.youtube.com_cookies.txt \
-  && scp /tmp/ytmusic-auth.json brew@walkman-a.local:/home/brew/.config/walkman/ytmusic-auth.json \
-  && rm -f /tmp/ytmusic-auth.json && echo DEPLOYED
-```
-Then verify on the Pi: `ls -l ~/.config/walkman/ytmusic-auth.json`.
+### Re-auth procedure (when cookie auth expires)
+1. `music.youtube.com` logged into the account → "Get cookies.txt LOCALLY" → Export.
+2. On the Mac:
+   ```bash
+   python3 /Users/brew/Code/walkman/scripts/ytmusic_auth_from_curl.py \
+       -o /tmp/ytmusic-auth.json < ~/Downloads/music.youtube.com_cookies.txt \
+     && scp /tmp/ytmusic-auth.json brew@walkman-a.local:/home/brew/.config/walkman/ytmusic-auth.json \
+     && rm -f /tmp/ytmusic-auth.json && echo DEPLOYED
+   ```
+3. Restart Mopidy. (Future: the controller surfaces "needs re-auth" as a magenta LED blink.)
+
+- A loose `copied_as_curl.txt` (had a cookie) was found in the repo dir,
+  git-excluded, and deleted; auth-secret patterns are in `.gitignore`.
+
+## Carry-forward into Step 2+
+
+- A **foreground test Mopidy is currently running as `brew`** (PID in `~/mopidy.pid`,
+  log `~/mopidy.log`). **Stop it before Step 2** (`kill $(cat ~/mopidy.pid)`) so it
+  doesn't clash with the systemd service (port 6680 / ALSA device).
+- Move Mopidy to a **systemd service** (mopidy user) + relocate auth to a per-device
+  system path; sort file permissions for the service user.
+- Auto-play on boot, button gestures, LED states (incl. magenta re-auth blink),
+  speaker↔headphone auto-switch.
 
 ## Then, to finish Step 1 (the gate)
 
