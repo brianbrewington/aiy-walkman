@@ -100,6 +100,13 @@ else
   echo "WARNING: brotli still importable — Mopidy may segfault on extraction"
 fi
 
+# 5b. Patch Mopidy-YouTube: one unguarded result["author"] KeyErrors and kills the
+# ENTIRE playlist load when ytmusicapi omits "author" for a playlist (hit with a kid's
+# playlist that contained a plain YouTube video, not a "song"). Per-track parsing
+# already tolerates a missing author; only this playlist-level line didn't. The patch
+# logic lives in scripts/patch_mopidy_youtube.py (idempotent; regression-tested).
+python3 "$REPO/scripts/patch_mopidy_youtube.py"
+
 # 6. Mopidy config + per-device dirs ------------------------------------------
 log "6/8 mopidy.conf + config dirs"
 asuser mkdir -p "$USER_HOME/.config/mopidy" "$USER_HOME/.config/walkman"

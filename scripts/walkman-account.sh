@@ -36,6 +36,17 @@ done
 [ -n "$COOKIES" ] || { echo "error: --cookies <cookies.txt | curl.txt> is required"; exit 1; }
 [ -f "$COOKIES" ] || { echo "error: cookies file not found: $COOKIES"; exit 1; }
 
+# Always shred a cookie we were handed in /tmp, on ANY exit — don't depend on the
+# caller's "&& rm" (which gets skipped if anything below exits non-zero, as it did when
+# a kid's playlist failed to load and left the cookie sitting on disk). Never touch a
+# cookies.txt the user keeps in their repo/home.
+cleanup_tmp_cookie() {
+  case "$COOKIES" in
+    /tmp/*) rm -f "$COOKIES" 2>/dev/null && echo "==> removed $COOKIES (cookie no longer needed on disk)";;
+  esac
+}
+trap cleanup_tmp_cookie EXIT
+
 # 1. cookies/cURL -> ytmusicapi browser-auth JSON (reuses the converter; injects the
 #    SAPISIDHASH 'authorization' header so ytmusicapi classifies it as BROWSER auth).
 echo "==> writing auth file"
@@ -55,8 +66,23 @@ if [ -n "$HOSTNAME_NEW" ]; then
   echo "==> hostname set: $HOSTNAME_NEW (full effect after reboot)"
 fi
 
-# 4. restart playback with the new credentials/playlist
+# 4. restart playback with the new credentials/playlist.
+# autoplay is a oneshot that fails (non-zero) if it can't START playback — e.g. an
+# empty/private playlist. That's NOT an auth failure, so don't crash the script with a
+# scary systemd error: catch it and explain. (systemd's own stderr is hidden so the
+# kid sees our friendly message, not "Job for walkman-autoplay.service failed".)
 echo "==> restarting Mopidy + autoplay"
 sudo systemctl restart walkman-mopidy.service
-sudo systemctl restart walkman-autoplay.service
-echo "done. (If you changed the hostname, reboot when convenient.)"
+if sudo systemctl restart walkman-autoplay.service 2>/dev/null; then
+  echo "✅ Done — your music should be playing now (LED breathing green)."
+else
+  echo
+  echo "⚠️  Your login was saved and the playlist was set, but the music didn't start."
+  echo "    Almost always this is the PLAYLIST, not your login — it may be empty, set to"
+  echo "    private, or contain a video that isn't a song. Try a different playlist, or"
+  echo "    see what happened with:"
+  echo "        journalctl -u walkman-autoplay -n 20 --no-pager"
+  echo "    (The box will also try again each time you power it on.)"
+fi
+[ -n "$HOSTNAME_NEW" ] && echo "(You changed the hostname — reboot when convenient.)"
+exit 0

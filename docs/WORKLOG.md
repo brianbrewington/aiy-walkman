@@ -969,6 +969,58 @@ itself; if a workaround is needed, surface the reason rather than burying it.
 
 ---
 
+## 13. Field test #1 (2026-06-07): a kid's playlist breaks Mopidy-YouTube
+
+Handed the wiped (magenta) box to Nathan to set up solo with **his own** account +
+playlist. The teaching parts worked — he got through the cookie export and the `scp`
+landed fine. Then the second command (`walkman-account.sh`) errored, and he wisely
+saved the terminal output to `~/error_message.txt` for us.
+
+**Symptom:** `walkman-autoplay` failed — "loaded 0 tracks from playlist" on all 5
+retries → service exit 1 → a scary `Job for walkman-autoplay.service failed` message.
+
+**Diagnosis (the important part: it was NOT his fault).** His cookie auth was
+*perfect* — a direct `ytmusicapi` call read his playlist ("Better songs", 6 tracks)
+and 8 library playlists. The Mopidy log showed the real cause:
+
+```
+mopidy_youtube  Playlist.videos list_playlistitems error "'author'"
+mopidy_youtube  Cannot load yt:https://music.youtube.com/playlist?list=PLH2...
+```
+
+`apis/youtube_music.py` builds a playlist's top-level artists with an **unguarded**
+`result["artists"] = [result["author"]]`. When `ytmusicapi.get_playlist()` returns a
+playlist whose result has no `author` key — which happens when the playlist contains a
+plain YouTube video rather than a "song" — that line raises `KeyError: 'author'` and
+kills the **entire** playlist load. The per-track parser (`ytm_item_to_video`) already
+tolerates a missing author; only this playlist-level line didn't.
+
+**Fix.** Guard it: `[result["author"]] if result.get("author") else []`. Because
+Mopidy-YouTube is pip-installed (not vendored), the patch lives in
+`scripts/patch_mopidy_youtube.py` (idempotent; locates the installed file, drops stale
+`.pyc`), `setup.sh` runs it after the pip step (so every unit/reinstall gets it), and
+`tests/test_mopidy_youtube_patch.py` guards it — including a behavioral test proving
+the *old* line `KeyError`s on a missing author while the *new* one returns `[]`.
+
+**Two robustness lessons baked back into the tools:**
+
+- `walkman-account.sh` used to **crash** on autoplay's non-zero exit (a *playlist*
+  problem, not an auth one) and — because the script died — the caller's `&& rm`
+  never ran, leaving the **cookie sitting in `/tmp`**. Now: a `trap … EXIT` shreds any
+  `/tmp` cookie unconditionally, and the autoplay restart is wrapped so a failure
+  prints a calm "your login saved fine; it's probably the playlist" message (systemd's
+  scary line hidden) instead of crashing.
+- The setup guide gained two friction fixes Nathan surfaced: the box was **off** (the
+  page had assumed a magenta light was already showing) → a "First, turn it on… no
+  magenta? ask whoever gave you the box" step; and he'd **never installed a browser
+  extension** → a step-by-step "Install the cookie helper 🧩" section with a direct
+  Chrome Web Store link, a pre-filled search fallback, and how to pin it.
+
+Reinforces the §12 ethos: the device and the docs should *teach and reassure*. A
+first-timer hitting a real upstream bug should never read as "you broke it."
+
+---
+
 *Source notes this log synthesizes: `MEMORY.md` and the project memory files;
 `docs/STEP0-NOTES.md`, `STEP1-PROGRESS.md`, `STEP2-NOTES.md`, `STEP3-NOTES.md`,
 `PLAN.md`, `IDEAS.md`; `README.md`; `drivers/patches/*` + `drivers/prebuilt/README.md`;
