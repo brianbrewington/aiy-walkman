@@ -29,6 +29,7 @@ EVENT = struct.Struct("llHHi")
 
 CARD = "aiyvoicebonnet"      # ALSA card id (index-independent)
 SPEAKER_SWITCH = "Speaker Switch"
+HEADPHONE_SWITCH = "Headphone Switch"
 JACK_NAME_HINTS = ("headphone jack", "voicebonnet")
 
 
@@ -60,17 +61,21 @@ def query_inserted(dev: str) -> bool:
     return r.returncode == 10
 
 
-def set_speaker(on: bool) -> None:
+def _switch(control: str, on: bool) -> None:
     subprocess.run(
-        ["amixer", "-c", CARD, "--", "cset", f"name={SPEAKER_SWITCH}", "on" if on else "off"],
+        ["amixer", "-c", CARD, "--", "cset", f"name={control}", "on" if on else "off"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
 
 def apply(inserted: bool) -> None:
-    # headphones in -> speaker OFF; out -> speaker ON
-    set_speaker(not inserted)
-    log(f"headphones {'IN' if inserted else 'OUT'} -> speaker {'OFF' if inserted else 'ON'}")
+    # Drive both outputs mutually exclusively so you never hear both at once:
+    #   jack inserted -> headphones only (speaker off, headphone on)
+    #   jack empty    -> speaker only    (speaker on, headphone off)
+    _switch(SPEAKER_SWITCH, not inserted)
+    _switch(HEADPHONE_SWITCH, inserted)
+    log(f"headphones {'IN' if inserted else 'OUT'} -> "
+        f"speaker {'OFF' if inserted else 'ON'}, headphone {'ON' if inserted else 'OFF'}")
 
 
 def main() -> int:
