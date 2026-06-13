@@ -120,7 +120,17 @@ nowhere.</div>
   <li><b>Pin it so you can find it later:</b> click the puzzle-piece icon
       <b>🧩</b> near the top-right of your browser, then click the <b>📌 pin</b> next to
       "Get cookies.txt LOCALLY". Now its icon sits in your toolbar — you'll click it in Step 2.</li>
+  <li><b>Let it run in Incognito</b> (this is the part everyone misses!): type
+      <code>chrome://extensions</code> in the address bar and press Enter, find
+      <b>"Get cookies.txt LOCALLY"</b>, click <b>Details</b>, scroll down, and turn on
+      <b>"Allow in Incognito"</b>.</li>
 </ol>
+<div class="why"><b>Why this extra step?</b> Chrome switches <em>all</em> extensions
+<b>off</b> in Incognito windows by default — that's a privacy feature. But Step 2 needs
+this helper to work <em>inside</em> Incognito (that's what keeps the box's cookie alive
+for weeks instead of dying in an hour). Flipping "Allow in Incognito" now is what makes
+Step 2 possible. <b>You don't need to "pack" or re-install anything</b> — this one toggle
+is the whole trick.</div>
 <p class="hint"><b>On Firefox?</b> Search your browser's add-ons for
 "Get cookies.txt LOCALLY" instead. &nbsp;·&nbsp; To see all your extensions any time,
 type <code>chrome://extensions</code> into the address bar and press Enter (browsers
@@ -175,10 +185,17 @@ re-printed</em> once you close it — so the box's copy keeps working for weeks.
       and <b>sign in</b>. <span class="hint">Use a <b>personal</b> Google account if you
       can — school/work accounts often block this.</span></li>
   <li>Click the <b>🧩 Get cookies.txt LOCALLY</b> extension → <b>Export</b>. It saves a
-      file to your <b>Downloads</b>, usually <code>music.youtube.com_cookies.txt</code>.</li>
+      file to your <b>Downloads</b>, usually <code>music.youtube.com_cookies.txt</code>.
+      <br><span class="hint">In Incognito the icon is usually <b>hidden inside the
+      puzzle-piece menu 🧩</b> (top-right) even if you pinned it — click the puzzle piece
+      and you'll find it there.</span></li>
   <li><b>Close the Incognito window right away</b> — don't browse YouTube in it again.
       That "freezes" the ticket so the box's copy stays good.</li>
 </ol>
+<p class="hint"><b>Can't find the extension in Incognito?</b> You probably skipped the
+<b>"Allow in Incognito"</b> toggle back in Step 1. Go to <code>chrome://extensions</code>
+→ <b>Get cookies.txt LOCALLY</b> → <b>Details</b> → turn on <b>"Allow in Incognito"</b>,
+then come back and try the export again.</p>
 <p>If your file has a different name, type the exact name here:</p>
 <div class="field">
   <label for="cookiefile">Cookie file name (in your Downloads)</label>

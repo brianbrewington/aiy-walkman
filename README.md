@@ -57,7 +57,10 @@ see `docs/WORKLOG.md`). Cookies expire periodically; when they do, the LED blink
 
 **Get a cookies.txt:** on a computer logged into the target YouTube Music account,
 export `music.youtube.com` cookies with the open-source **"Get cookies.txt LOCALLY"**
-browser extension.
+browser extension. Chrome disables extensions in Incognito by default, so first enable
+the extension there: `chrome://extensions` → **Get cookies.txt LOCALLY** → **Details** →
+turn on **Allow in Incognito** (no need to pack/side-load — this one toggle is all it
+takes). In Incognito the icon lives in the puzzle-piece (🧩) menu even if pinned.
 
 > **Export from an Incognito window, then close it — this is the difference between a
 > cookie that lasts weeks and one that dies in an hour.** Google rotates the
