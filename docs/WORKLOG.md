@@ -12,7 +12,7 @@
 > **How to read this as a runbook.** Each step now carries a copy-pasteable command
 > block. The fast reproduction path is: install the checkpoint driver debs
 > (`drivers/prebuilt/README.md`), install Mopidy + the pinned YouTube stack (§4.1),
-> install deno and remove brotli (§8.5), deploy the shim + four systemd units (§9).
+> install deno and remove brotli (§8.5), deploy the shim + five systemd units (§9).
 > Jump to **§0 Prerequisites** first, the **§Troubleshooting table** (§10.1) when
 > something's broken, and the **§Diagnostics toolbox** (§10.2) to learn *how* each
 > problem was found. **⚠ The entire YouTube section (§8) will rot** — see the dated
@@ -61,25 +61,28 @@ Because of this, *every* runtime path is under `/home/brew`.
 | Repo (Mac) | On the Pi | Notes |
 |---|---|---|
 | `src/`, `config/`, `shim/` | `/home/brew/walkman/{src,config,shim}` | app code + shim |
-| `systemd/*.service` | `/etc/systemd/system/` | four units, all enabled |
+| `systemd/*.service` | `/etc/systemd/system/` | five units, all enabled |
 | `config/mopidy.conf.example` | `~/.config/mopidy/mopidy.conf` | live Mopidy config |
 | `scripts/ytmusic_auth_from_curl.py` | also `/home/brew/ytmusic_auth_from_curl.py` | auth converter |
 | (auth output) | `~/.config/walkman/ytmusic-auth.json` | **mode 600**; dir must exist |
 | `drivers/prebuilt/*.deb` | (scp'd, `dpkg -i`) | driver checkpoint debs |
+| `cpx/boot.py`, `cpx/code.py` | `CIRCUITPY/{boot.py,code.py}` | CPX satellite firmware |
 | (driver source clone) | `~/walkman-build/aiy-src` | git @ pinned commit |
 | (config.txt backup) | `/boot/firmware/config.txt.bak-walkman` | — |
 
-**Hardware-free checks you can run anywhere** (no Pi needed): `python3 -m pytest tests/`
-exercises the button state machine (`tests/test_press_pattern.py`) — the only tests in
-the repo that don't require hardware.
+**Hardware-free checks you can run anywhere** (no Pi needed):
+`python3 -m unittest discover -s tests` exercises the pure Python behavior: button
+state machine, Mopidy JSON-RPC client, controller decisions, autoplay, auth
+conversion, and CPX satellite helpers.
 
 ---
 
 ## 1. Overview — what this thing is
 
 **Walkman** is a screen-free, one-button YouTube Music player for kids. Boot it and
-it shuffle-plays one configured playlist through the bonnet's audio; the only I/O is
-a single arcade button and its built-in RGB LED.
+it shuffle-plays one configured playlist through the bonnet's audio. The built-in
+control surface is a single arcade button and RGB LED; the CPX satellite adds
+volume buttons, a green VU ring, and Night mode.
 
 **Hardware**
 
@@ -701,10 +704,11 @@ Full detail: `docs/STEP3-NOTES.md`.
 
 ## 9. Service & deployment map (current reality)
 
-Four systemd units, all enabled; the stock `mopidy.service` stays **disabled**.
+Five systemd units, all enabled; the stock `mopidy.service` stays **disabled**.
 
 | Unit | User | Type | Job |
 |------|------|------|-----|
+| `walkman-satellite.service` | brew | simple | CPX USB serial, volume buttons, NeoPixel VU meter. `Restart=always`. |
 | `walkman-mopidy.service` | brew | simple | Mopidy + YouTube Music. `PYTHONPATH` shim. `Restart=always`. |
 | `walkman-autoplay.service` | brew | oneshot | Load playlist, shuffle+repeat, play on boot. `RemainAfterExit=yes`, `TimeoutStartSec=300`. |
 | `walkman-jack.service` | root | simple | Mute speaker when headphones inserted. |
@@ -713,21 +717,22 @@ Four systemd units, all enabled; the stock `mopidy.service` stays **disabled**.
 - Code on the Pi at `/home/brew/walkman/{src,config,shim}`; units in
   `/etc/systemd/system/`.
 
-Deploy + enable (run on the Pi from the repo dir):
+Normal deployment is now `sudo ./setup.sh` from `/home/brew/walkman`; it installs
+dependencies, drivers, the CPX udev rule, the `snd-aloop` module-load file, services,
+and the calm ALSA baseline. The manual equivalent is still useful when debugging a
+service file:
 
 ```bash
 sudo systemctl disable --now mopidy          # kill the stock unit (port 6680 / ALSA conflict)
 sudo cp systemd/walkman-*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now \
-    walkman-mopidy walkman-autoplay walkman-jack walkman-controller
+    walkman-satellite walkman-mopidy walkman-autoplay walkman-jack walkman-controller
 systemctl --no-pager status walkman-mopidy   # sanity-check
 ```
 
-- **All of the above deployment is currently manual** and needs to be folded into an
-  idempotent `setup.sh` (AIY DKMS drivers + patches, deno, yt-dlp[default]-minus-
-  brotli, the shim, the four units, the config.txt edit, the mixer baseline). See
-  `docs/IDEAS.md` for the image-vs-setup.sh provisioning discussion.
+- `setup.sh` is the source of truth for fresh units. See `docs/IDEAS.md` for the
+  optional golden-image discussion.
 
 ---
 
@@ -872,19 +877,17 @@ Conclusions are cheap; the methods are reusable. These are the exact techniques 
 
 ## 11. Open items / TODO
 
-- Fold all on-Pi manual steps into an idempotent `setup.sh` (drivers + patches, deno,
-  yt-dlp-minus-brotli, shim, four units, config.txt, mixer baseline).
-- Step 4 LED status loop (green breathing while playing, amber paused, blue blink
-  startup/wifi-down, red blink error, **magenta blink = needs re-auth**, white
-  shutting-down). The LED module and controller are structured to grow into this.
+- Bench-validate the CPX satellite on the real Pi: `/dev/walkman-cpx`, button volume,
+  Night mode, green VU, and no audio glitch when `walkman-satellite` restarts.
 - Verify long-press safe-shutdown for real.
 - Verify `set_random` reshuffles the *first* track on boot.
-- Power-loss resilience: implement the documented read-only-root / overlayfs
-  procedure (kids yank power).
+- Power-loss resilience: turn on the documented read-only-root / overlayfs procedure
+  once a unit is stable and handed to a kid.
 - Robust `next`: stand up `bgutil-ytdlp-pot-provider`.
 - Family backlog (`docs/IDEAS.md`): repeat-track (Nathan, 12), now-playing OLED — both
-  earmarked for the future CPX serial-satellite, since the one button is full.
-- Kid-runnable re-auth ("cookie-monster") tied to the magenta LED state.
+  earmarked for the CPX serial-satellite, since the one button is full.
+- Expired-cookie auto-detection: magenta exists for missing/known-bad auth, but
+  automatically recognizing stale cookies is still deferred.
 
 ---
 
@@ -969,7 +972,7 @@ itself; if a workaround is needed, surface the reason rather than burying it.
 
 ---
 
-## 13. Field test #1 (2026-06-07): a kid's playlist breaks Mopidy-YouTube
+## 14. Field test #1 (2026-06-07): a kid's playlist breaks Mopidy-YouTube
 
 Handed the wiped (magenta) box to Nathan to set up solo with **his own** account +
 playlist. The teaching parts worked — he got through the cookie export and the `scp`

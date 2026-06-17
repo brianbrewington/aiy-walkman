@@ -1,5 +1,9 @@
 # Walkman — Step 2 notes (boot-to-music)
 
+> **Historical checkpoint.** This records the manual boot-to-music milestone. For
+> current setup, use [`../README.md`](../README.md) and `setup.sh`; the deploy steps
+> below were folded into the installer.
+
 **Status: ✅ Step 2 PASSED 2026-06-07.** Cold reboot → device auto-starts Mopidy and
 shuffle-plays the configured playlist with zero interaction (verified: both services
 active, autoplay `Result=success`, `state=playing`).
@@ -16,7 +20,7 @@ active, autoplay `Result=success`, `state=playing`).
 - **`systemd/walkman-autoplay.service`** — oneshot, `Requires/After` mopidy +
   network, runs `autoplay.py`.
 
-## Deploy (current, manual — will be folded into setup.sh)
+## Deploy (historical manual path — now handled by setup.sh)
 - Code on Pi at `/home/brew/walkman/{src,config}`; units in `/etc/systemd/system/`.
 - `sudo systemctl enable --now walkman-mopidy walkman-autoplay`.
 - Stock `mopidy.service` left disabled (avoids port 6680 conflict).

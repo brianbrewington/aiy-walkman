@@ -1,5 +1,10 @@
 # Walkman — One-Button Headless Music Player (AIY Voice Bonnet)
 
+> **Historical build plan.** This file is useful for understanding the original
+> thinking and tradeoffs, but it is not the current setup guide. Start with
+> [`README.md`](../README.md) for current install/provisioning instructions and
+> [`WORKLOG.md`](WORKLOG.md) §2 for what changed once the real hardware was probed.
+
 ## Context
 
 Building a screen-free, one-button YouTube Music player for kids on a Raspberry Pi
@@ -46,12 +51,11 @@ net stack; **~270 MB RAM free** (tight → favors one combined controller proces
   `mopidy.service` (stock) + `walkman.service` (our controller).
 - **Pluggable input layer.** Input is abstracted behind a small dispatch interface
   (gesture/command -> action), so the on-board button is just the first source. A
-  future satellite source (see below) and a future volume input plug in without a
+  satellite source (see below) and other future inputs can plug in without a
   rewrite. No extra GPIO pins reserved now.
-- **Volume = real capability now, no input yet.** Wire ALSA mixer get/set
-  (`amixer`/python) into the controller and verify it works programmatically, but
-  bind it to no gesture (the single button stays play/pause + next + shutdown).
-  Future volume sources documented, not built.
+- **Volume = Mopidy software mixer.** Use Mopidy JSON-RPC `core.mixer.get_volume` /
+  `set_volume` so volume works for both speaker and headphones. The single arcade
+  button stays play/pause + next + shutdown; the CPX satellite owns volume input.
 - **Auto-play on boot lives in the controller**: once Mopidy HTTP is reachable, it
   loads the configured playlist, sets `random=true repeat=true consume=false`, and
   starts playback — satisfying "music with zero interaction."
@@ -67,16 +71,12 @@ net stack; **~270 MB RAM free** (tight → favors one combined controller proces
 - **Per-device credentials.** The OAuth json path and playlist ID live in the
   user-settings config, never in code. Provisioning unit #2 = drop a different
   `oauth.json`, change playlist ID, change hostname — nothing else.
-- **Satellite expansion hook = a general bidirectional serial channel (not built
-  now).** Future external I/O is conceived as a two-way command/data link to a
-  satellite microcontroller (likely an Adafruit Circuit Playground Express over USB
-  serial — USB-powered + USB-data on one cable). It will likely later carry volume
-  input *and* a secondary status display *and* a NeoPixel-ring level/VU meter driven
-  by a lightweight Pi-computed audio-level envelope (NOT FFT) plus volume/play
-  state. The pluggable input layer is therefore designed as a general bidirectional
-  message channel so any of those can attach later without rework. README will note:
-  the Pi Zero 2 W's single USB data port is the real constraint for this path, and an
-  analog LM3915 VU ladder is a separate optional hardware project, not the meter.
+- **Satellite expansion = CPX over bidirectional USB serial.** External I/O uses an
+  Adafruit Circuit Playground Express over CircuitPython USB CDC. It carries volume
+  button input plus a NeoPixel VU meter driven by a lightweight Pi-computed audio
+  envelope (NOT FFT). The Pi Zero 2 W's single USB data port is the real constraint
+  for this path, and an analog LM3915 VU ladder is a separate optional hardware
+  project, not the meter.
 
 ## Repository layout (authored on Mac at `/Users/brew/Code/walkman`, deployed to Pi)
 
@@ -156,8 +156,8 @@ the LED can't be driven cleanly, stop.
 ### Step 3 — Input layer + button gestures (`button.py`, GPIO 23)
 - **Pluggable input layer first:** a small dispatch interface mapping abstract
   gestures/commands -> controller actions (play/pause, next, shutdown, set-volume).
-  The on-board button is the first source registered against it; a future serial
-  satellite source and a future volume source plug into the same interface.
+  The on-board button is the first source registered against it; the CPX satellite
+  now uses the same Mopidy control surface for volume.
 - gpiozero `Button(23, pull_up=True)` (lgpio backend). State machine on
   press/release timestamps: **long** = held ≥ threshold (default 1.2 s, from
   config); after release, a short window (~350 ms) disambiguates **single** vs
@@ -165,10 +165,9 @@ the LED can't be driven cleanly, stop.
   shutdown** (show distinct "shutting down" LED, then `sudo poweroff`). Reshuffle is
   dropped (too close to "next"); safe shutdown mitigates SD-card corruption from a
   kid yanking power.
-- **Volume capability now (no input yet):** wire ALSA mixer get/set into the
-  controller (`amixer`/python), expose a `set_volume`/`get_volume` action, and
-  verify programmatically. Bind it to no gesture. No GPIO pins reserved. Future
-  volume sources documented in README.
+- **Volume capability:** expose Mopidy software-mixer `get_volume` / `set_volume`
+  helpers. Bind no volume gesture to the arcade button. No GPIO pins reserved; CPX
+  buttons provide volume input.
 
 ### Step 4 — LED status + breathing (`led.py`)
 - State→color: **playing** green sine-breathing; **paused** amber steady;
@@ -187,11 +186,10 @@ the LED can't be driven cleanly, stop.
   walkthrough (+ cookie-auth fallback), per-device credential swap procedure, how to
   set the playlist, enabling services, **Known uncertainties**, and the future
   input/satellite roadmap.
-- **Future input/satellite docs (README, not built):** the bidirectional serial
-  channel to a CPX (volume + secondary status display + NeoPixel VU meter from a
-  lightweight Pi-side level envelope, not FFT); the **single USB data port** is the
-  real constraint; an LM3915 analog VU ladder is a separate optional hardware
-  project, not the meter; pluggable volume-input options.
+- **CPX satellite docs:** the bidirectional serial channel to a CPX provides volume
+  input + a NeoPixel VU meter from a lightweight Pi-side level envelope, not FFT.
+  The **single USB data port** is the real constraint; an LM3915 analog VU ladder is
+  a separate optional hardware project, not the meter.
 - **Power-loss resilience (README, actionable, deferred implementation):** concrete
   read-only-root / overlayfs procedure — `raspi-config` → Performance → Overlay File
   System (and the manual `cmdline.txt`/`fstab` equivalent), what breaks while

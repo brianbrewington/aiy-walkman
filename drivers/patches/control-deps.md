@@ -17,7 +17,8 @@ Fix applied before `dpkg-buildpackage` in each of `drivers/{aiy,sound,leds}/debi
 Depends: linux-headers-rpi-v8 | linux-headers-rpi-2712 | raspberrypi-kernel-headers, dkms (>= 1.95), ${misc:Depends}
 ```
 
-setup.sh should apply this (sed with a non-`|` delimiter, e.g. `@`) before building, e.g.:
+If you rebuild the driver packages from source, apply this before
+`dpkg-buildpackage` (sed with a non-`|` delimiter, e.g. `@`):
 
 ```
 sed -i "s@raspberrypi-kernel-headers, dkms@linux-headers-rpi-v8 | linux-headers-rpi-2712 | raspberrypi-kernel-headers, dkms@" debian/control

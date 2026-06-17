@@ -32,20 +32,21 @@ if [ "$REPO" != "$EXPECTED_DIR" ]; then
 fi
 
 # 1. APT packages -------------------------------------------------------------
-log "1/8 apt packages"
+log "1/9 apt packages"
 apt-get update -qq
 apt-get install -y \
   build-essential dkms debhelper dh-dkms bc unzip device-tree-compiler curl \
   i2c-tools evtest alsa-utils network-manager \
-  mopidy gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-  python3-gpiozero python3-lgpio python3-smbus2
+  mopidy gstreamer1.0-alsa gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+  python3-gpiozero python3-lgpio python3-smbus2 python3-serial
 # Kernel headers for the DKMS driver builds (running kernel + the rpi meta).
 apt-get install -y "linux-headers-$(uname -r)" 2>/dev/null \
   || apt-get install -y linux-headers-rpi-v8 || true
 
 # 2. AIY bonnet DKMS drivers (RT5645 audio + KTD2026 LED + aiy-io MCU) ---------
 # Prebuilt DKMS *source* debs (reviewed; rebuild against the running kernel).
-log "2/8 AIY DKMS drivers"
+log "2/9 AIY DKMS drivers"
 # Filesystem check (robust; doesn't depend on `dkms` being on root's PATH).
 if [ -d /var/lib/dkms/aiy ] && [ -d /var/lib/dkms/leds-ktd202x ] \
    && [ -d /var/lib/dkms/aiy-voicebonnet-soundcard ]; then
@@ -63,7 +64,7 @@ else
 fi
 
 # 3. Disable the SoC's built-in audio (the bonnet RT5645 is the card) ----------
-log "3/8 config.txt: disable built-in audio"
+log "3/9 config.txt: disable built-in audio"
 CFG=/boot/firmware/config.txt
 if grep -qE '^dtparam=audio=on' "$CFG"; then
   cp -n "$CFG" "${CFG}.bak-walkman" || true
@@ -73,8 +74,19 @@ else
   echo "built-in audio already disabled"
 fi
 
-# 4. deno — yt-dlp's JS runtime for YouTube signature solving ------------------
-log "4/8 deno"
+# 4. CPX satellite audio tap --------------------------------------------------
+log "4/9 CPX satellite audio tap"
+install -m 0644 "$REPO/config/modules-load-walkman-satellite.conf" \
+  /etc/modules-load.d/walkman-satellite.conf
+if modprobe snd-aloop; then
+  echo "snd-aloop loaded for the NeoPixel VU meter tap"
+else
+  echo "WARNING: could not load snd-aloop; CPX VU meter tap will not work yet"
+fi
+usermod -aG dialout,audio "$WALKMAN_USER" || true
+
+# 5. deno — yt-dlp's JS runtime for YouTube signature solving ------------------
+log "5/9 deno"
 if [ -x /usr/local/bin/deno ]; then
   echo "deno present: $(/usr/local/bin/deno --version | head -1)"
 else
@@ -87,10 +99,10 @@ else
   echo "deno installed: $(/usr/local/bin/deno --version | head -1)"
 fi
 
-# 5. Python: Mopidy-YouTube + ytmusicapi + yt-dlp[default], then DROP brotli ----
+# 6. Python: Mopidy-YouTube + ytmusicapi + yt-dlp[default], then DROP brotli ----
 # brotli's C-extension SEGFAULTs in Mopidy's worker threads on this ARM build
 # (faulthandler pointed at _brotli in urllib3 decompress). Removing it = gzip fallback.
-log "5/8 pip: Mopidy-YouTube / ytmusicapi / yt-dlp (then remove brotli)"
+log "6/9 pip: Mopidy-YouTube / ytmusicapi / yt-dlp (then remove brotli)"
 pip3 install --break-system-packages \
   "Mopidy-YouTube==4.0.2" "ytmusicapi==1.12.1" "yt-dlp[default]==2026.3.17"
 pip3 uninstall -y --break-system-packages brotli >/dev/null 2>&1 || true
@@ -100,15 +112,15 @@ else
   echo "WARNING: brotli still importable — Mopidy may segfault on extraction"
 fi
 
-# 5b. Patch Mopidy-YouTube: one unguarded result["author"] KeyErrors and kills the
+# 6b. Patch Mopidy-YouTube: one unguarded result["author"] KeyErrors and kills the
 # ENTIRE playlist load when ytmusicapi omits "author" for a playlist (hit with a kid's
 # playlist that contained a plain YouTube video, not a "song"). Per-track parsing
 # already tolerates a missing author; only this playlist-level line didn't. The patch
 # logic lives in scripts/patch_mopidy_youtube.py (idempotent; regression-tested).
 python3 "$REPO/scripts/patch_mopidy_youtube.py"
 
-# 6. Mopidy config + per-device dirs ------------------------------------------
-log "6/8 mopidy.conf + config dirs"
+# 7. Mopidy config + per-device dirs ------------------------------------------
+log "7/9 mopidy.conf + config dirs"
 asuser mkdir -p "$USER_HOME/.config/mopidy" "$USER_HOME/.config/walkman"
 if [ -f "$USER_HOME/.config/mopidy/mopidy.conf" ]; then
   echo "mopidy.conf already present (left as-is)"
@@ -117,17 +129,25 @@ else
   echo "installed mopidy.conf from example"
 fi
 
-# 7. systemd units ------------------------------------------------------------
-log "7/8 systemd services"
+# 8. systemd units ------------------------------------------------------------
+log "8/9 systemd services + log retention"
+install -d -m 0755 /etc/systemd/journald.conf.d
+install -m 0644 "$REPO/config/journald-walkman.conf" \
+  /etc/systemd/journald.conf.d/walkman.conf
 install -m 0644 "$REPO"/systemd/walkman-*.service /etc/systemd/system/
+install -m 0644 "$REPO/config/99-walkman-cpx.rules" /etc/udev/rules.d/
+udevadm control --reload-rules || true
+udevadm trigger || true
 systemctl daemon-reload
+systemctl restart systemd-journald.service || true
 systemctl disable mopidy.service >/dev/null 2>&1 || true   # avoid port 6680 clash
-systemctl enable walkman-mopidy.service walkman-autoplay.service \
+systemctl enable walkman-satellite.service walkman-mopidy.service walkman-autoplay.service \
                  walkman-controller.service walkman-jack.service
-echo "enabled: walkman-mopidy, walkman-autoplay, walkman-controller, walkman-jack"
+echo "enabled: walkman-satellite, walkman-mopidy, walkman-autoplay, walkman-controller, walkman-jack"
+echo "journald capped by /etc/systemd/journald.conf.d/walkman.conf"
 
-# 8. ALSA baseline (RT5645 routing + channel switches + calm volumes) ----------
-log "8/8 ALSA mixer baseline"
+# 9. ALSA baseline (RT5645 routing + channel switches + calm volumes) ----------
+log "9/9 ALSA mixer baseline"
 install -m 0644 "$REPO/config/asound.state" /var/lib/alsa/asound.state
 alsactl restore 2>/dev/null || alsactl restore aiyvoicebonnet 2>/dev/null || true
 echo "restored mixer state"

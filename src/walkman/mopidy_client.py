@@ -69,3 +69,23 @@ class MopidyClient:
 
     def get_current_track(self):
         return self.call("core.playback.get_current_track")
+
+    # --- convenience mixer helpers ---
+    def get_volume(self):
+        """Return Mopidy software-mixer volume (0..100), or None if unknown."""
+        return self.call("core.mixer.get_volume")
+
+    def set_volume(self, volume: int) -> int:
+        """Clamp and set Mopidy software-mixer volume. Returns the requested value."""
+        volume = max(0, min(100, int(volume)))
+        self.call("core.mixer.set_volume", volume=volume)
+        return volume
+
+    def nudge_volume(self, delta: int, lo: int = 0, hi: int = 100) -> int:
+        """Move volume by delta within [lo, hi]. Unknown current volume starts at 50."""
+        lo = max(0, min(100, int(lo)))
+        hi = max(lo, min(100, int(hi)))
+        cur = self.get_volume()
+        if cur is None:
+            cur = 50
+        return self.set_volume(max(lo, min(hi, int(cur) + int(delta))))

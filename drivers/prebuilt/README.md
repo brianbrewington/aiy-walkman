@@ -11,6 +11,9 @@ up the AIY Voice Bonnet audio (RT5645) + button LED (KTD2026) on kernel
 
 ## Install (order matters: aiy first — it provides the aiy-gpio supplier)
 
+Run this from `drivers/prebuilt/` if you are installing the driver checkpoint by
+hand. Normal fresh-unit installs should just run the repo-root `setup.sh`.
+
 ```bash
 sudo apt-get install -y dkms build-essential bc linux-headers-rpi-v8
 sudo dpkg -i aiy-dkms_2.0-1.2_all.deb \
@@ -28,7 +31,8 @@ sudo reboot
 
 After reboot verify: `aplay -l | grep aiy` and `ls /sys/class/leds/ | grep ktd`.
 
-> These are a convenience checkpoint. The reproducible-from-source path
-> (clone + patch + `dpkg-buildpackage`) will live in `setup.sh`. If the kernel is
-> updated, DKMS rebuilds automatically; if the fork's patches ever stop applying,
-> rebuild from a compatible source or pin/hold the kernel.
+> These are a convenience checkpoint. `setup.sh` installs them automatically for the
+> normal path. The reproducible-from-source path is still documented in
+> `docs/WORKLOG.md`; if the kernel is updated, DKMS rebuilds automatically, and if
+> the fork's patches ever stop applying, rebuild from a compatible source or pin/hold
+> the kernel.

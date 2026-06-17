@@ -1,13 +1,15 @@
 # Walkman — CPX Volume + VU-Meter Satellite (plan)
 
-**Status:** PLANNED · not built · 2026-06-07 · Pi Zero 2 W, AIY Voice Bonnet,
-kernel 6.12.87+rpt-rpi-v8
+**Status:** CODE IMPLEMENTED · bench validation still required · 2026-06-17 · Pi
+Zero 2 W, AIY Voice Bonnet, kernel 6.12.87+rpt-rpi-v8
 
 **TL;DR.** Add an Adafruit **Circuit Playground Express** (circa 2018) on the Pi's
 single USB port as an external satellite. Its **two buttons** become volume
-down/up; its **10 NeoPixels** become a **real-time amplitude / VU meter of the
-music as it plays** (not a volume gauge). One micro-USB cable carries both power
-and bidirectional serial. This realizes the "bidirectional serial satellite" hook
+down/up; its **10 NeoPixels** normally become a green real-time amplitude / VU
+meter of the music as it plays. After a volume press, the ring shows a blue volume
+level bar for 2 seconds. The CPX slide switch enables **Night mode**: no VU meter,
+and only a very dim blue volume cue. One USB cable carries both power and
+bidirectional serial. This realizes the "bidirectional serial satellite" hook
 already designed into [`PLAN.md`](PLAN.md) §Key-decisions ("a general bidirectional
 serial channel … volume input *and* a NeoPixel-ring level/VU meter driven by a
 lightweight Pi-computed audio-level envelope (NOT FFT)").
@@ -16,17 +18,31 @@ This is the richer of the two volume routes. The minimal alternative — two pla
 pushbuttons straight to GPIO, no CPX — is documented separately in
 [`GPIO-VOLUME-BUTTONS-PLAN.md`](GPIO-VOLUME-BUTTONS-PLAN.md).
 
+## Implementation result
+
+Built in the repo:
+- `src/walkman/satellite.py` reads CPX button events, nudges Mopidy volume, and
+  streams `L:` VU levels from an ALSA loopback capture.
+- `cpx/boot.py` and `cpx/code.py` implement the CircuitPython side, including the
+  slide-switch Night mode.
+- `setup.sh`, systemd, udev, and `config/walkman.toml` are wired for the new service.
+
+Verified off-hardware: Python compilation, shell syntax, Pi-side unit tests, and
+CPX firmware protocol/rendering tests with fake serial, fake buttons, fake slide
+switch, and fake NeoPixels. Still needs bench validation on the real Pi/CPX for
+`/dev/walkman-cpx`, the GStreamer tee, and glitch-free audio when
+`walkman-satellite` restarts.
+
 ---
 
 ## Context
 
-The player has **no volume control today**. [`PLAN.md`](PLAN.md) §Key-decisions
-reserved an "ALSA mixer get/set, wired but bound to no gesture" capability, but it
-was never built — `controller.py` only does play/pause, next, and shutdown. The one
-arcade button is full (single = play/pause, double = next, long = shutdown), so
-volume needs a **new input source**, and the family also wants the lights to *do
-something* with the music. The CPX gives us both in one USB-attached unit without
-touching the bonnet's occupied header.
+The original player had **no volume control**. [`PLAN.md`](PLAN.md) §Key-decisions
+reserved a mixer capability but bound no gesture to it; the root controller still
+only handles play/pause, next, and shutdown on the arcade button. Volume needs a
+**new input source**, and the family also wants the lights to *do something* with
+the music. The CPX gives us both in one USB-attached unit without touching the
+bonnet's occupied header.
 
 ### Confirmed design decisions
 
@@ -41,9 +57,13 @@ touching the bonnet's occupied header.
 - **Link = full bidirectional CircuitPython USB serial (CDC).** Buttons → Pi, and
   Pi-computed audio level → NeoPixels, over one cable that also powers the CPX.
 - **Buttons = one volume step per press** (no hold-to-repeat). Predictable for kids.
-- **NeoPixels show the *music's amplitude*, not the volume level.** The Pi computes
-  a lightweight level envelope from the playing audio and streams it; the CPX
-  renders the VU animation locally.
+- **NeoPixels normally show the *music's amplitude*, not the volume level.** The Pi
+  computes a lightweight level envelope from the playing audio and streams it; the
+  CPX renders the VU animation locally. A volume press temporarily overrides this
+  with a blue proportional volume bar for 2 seconds.
+- **Slide switch = Night mode.** Night mode turns the VU meter off. Volume presses
+  still show a very dim blue proportional volume bar for 2 seconds, then the ring
+  goes dark again.
 
 ---
 
@@ -51,10 +71,9 @@ touching the bonnet's occupied header.
 
 A **self-contained satellite service**, independent of the root controller. It does
 three things and talks to Mopidy directly for volume — so it needs no IPC into the
-controller and can run **unprivileged** (`brew`, groups `dialout` + `audio`). This
-mirrors the existing 4-service split
-(`walkman-{mopidy,controller,jack,autoplay}.service`); the satellite is a 5th unit
-modeled on [`walkman-jack.service`](../systemd/walkman-jack.service).
+controller and can run **unprivileged** (`brew`, groups `dialout` + `audio`). It is
+the 5th unit in the service split and starts **before** Mopidy so the loopback
+capture side is already draining when Mopidy starts writing to the VU tap.
 
 ```
  CPX (CircuitPython)                         Pi (walkman-satellite.service)
@@ -62,7 +81,8 @@ modeled on [`walkman-jack.service`](../systemd/walkman-jack.service).
  BUTTON_A ─┐                          ┌───── serial read loop ── nudge_volume(-step)
  BUTTON_B ─┤  USB CDC (data)  <──────>┤                          via MopidyClient
  NeoPixels ┘   single cable           └───── serial write loop ◄─ audio meter loop
-   (VU ring, local animation)            L:<0-255>            (ALSA tap → audioop.rms)
+   (VU / blue volume / Night mode)       L:<0-255>, V:<0-100> (ALSA tap → RMS)
+                                          Q / S:<logical-state> (diagnostics)
    powered over the same USB ────────────────────────────────────────────────┘
 ```
 
@@ -100,7 +120,7 @@ And a `[volume]` section in
 [volume]
 step = 5      # percent per button press
 min = 0
-max = 100     # lower this for a kid-safe ceiling
+max = 70      # kid-safe ceiling
 ```
 
 ---
@@ -114,11 +134,12 @@ max = 100     # lower this for a kid-safe ceiling
 | `cpx/code.py` | CircuitPython: buttons → serial, serial → NeoPixel VU |
 | `systemd/walkman-satellite.service` | 5th unit (user `brew`, `dialout`+`audio`) |
 | `config/99-walkman-cpx.rules` | udev → stable `/dev/walkman-cpx` symlink |
+| `config/modules-load-walkman-satellite.conf` | load `snd-aloop` on boot |
 | `config/walkman.toml` | `[volume]` + `[satellite]` sections |
 | `src/walkman/mopidy_client.py` | volume helpers (shared groundwork above) |
 
-New dependency: **pyserial** (everything else is stdlib). Add to `setup.sh` /
-README deps when built.
+New dependency: **pyserial** via Debian `python3-serial` (everything else is stdlib
+or existing `alsa-utils`). `setup.sh` installs it.
 
 ### `src/walkman/satellite.py` — one process, three loops
 
@@ -126,15 +147,15 @@ README deps when built.
   fall back to scanning `/dev/serial/by-id/*` for the Adafruit VID `239A`. Open the
   **data** CDC endpoint (see boot.py note), read line-framed events: `A` →
   `nudge_volume(-step)`, `B` → `nudge_volume(+step)`. Wrap each action so a
-  `MopidyError` can never kill the read loop (mirror `button.py`'s "never let an
-  action error kill the input thread").
+  `MopidyError` can never kill the read loop. After a successful volume change, send
+  `V:<0-100>` back so the CPX can render the blue volume bar. `S:` status replies are
+  logged for diagnostics and never required for normal operation.
 - **Audio meter loop.** Read PCM frames from the ALSA tap (see "The hard part"),
   compute RMS with stdlib **`audioop.rms`** (C-fast; present in Python 3.11 — note
-  it's deprecated in 3.13, so pin a fallback), apply smoothing + short peak-hold,
-  map to a single **0–255** scalar.
+  it's deprecated in 3.13, so the implementation includes a hand-rolled fallback),
+  apply smoothing, and map to a single **0–255** scalar.
 - **Serial write loop.** Emit `L:<0-255>\n` at ~20–30 Hz. The CPX maps the scalar
-  onto its 10-pixel ring and runs the decay/peak animation **locally**, so dropped
-  or jittery frames don't stutter the meter and the serial stays light.
+  onto its 10-pixel ring locally, so the serial stays light.
 
 ### `cpx/boot.py` + `cpx/code.py` — CircuitPython firmware
 
@@ -144,54 +165,60 @@ README deps when built.
 - **`code.py`:**
   - Poll `board.BUTTON_A` / `board.BUTTON_B` with edge detection + debounce; emit
     exactly one `A` / `B` per press (one-step-per-press).
-  - Drive `board.NEOPIXEL` (10 px) from incoming `L:` frames: a VU bar with a
-    green → amber → red gradient and a brief peak-hold pixel; calm global brightness
-    (kids). On `S:pause` (optional) idle the ring (off or a slow dim pulse).
+  - Drive `board.NEOPIXEL` (10 px) from incoming `L:` frames as a green circular VU
+    meter.
+  - Drive incoming `V:` frames as a blue proportional volume bar for 2 seconds.
+  - Read `board.SLIDE_SWITCH` locally for Night mode: suppress the VU and show only
+    very dim blue volume feedback.
+  - Accept `C:` config frames for normal brightness, Night-mode volume brightness,
+    and volume feedback duration.
+  - Reply to `Q` with `S:<night>,<mode>,<volume>,<level>` so the Pi can verify the
+    logical light state without reading raw pixels.
   - Keep the parser tolerant of partial lines (accumulate until `\n`).
 
 ### `systemd/walkman-satellite.service`
 
-Model on [`walkman-jack.service`](../systemd/walkman-jack.service):
-`After=walkman-mopidy.service`, `Wants=walkman-mopidy.service`, `Restart=always`,
-`RestartSec=3`, `User=brew`, `SupplementaryGroups=dialout audio`.
+Runs `Before=walkman-mopidy.service`, `Restart=always`, `RestartSec=3`,
+`User=brew`, `Group=audio`, `SupplementaryGroups=dialout`.
 
 ### `config/99-walkman-cpx.rules`
 
-udev rule matching the CPX VID:PID → `SYMLINK+="walkman-cpx"` (and, if needed,
-`MODE="0660" GROUP="dialout"`), so the device path is deterministic across replug
-and boots. Resolve the exact PID for the **data** interface on the bench.
+udev rule matching Adafruit's USB VID and the CircuitPython data CDC interface
+number → `SYMLINK+="walkman-cpx"` with `MODE="0660" GROUP="dialout"`, so the device
+path is deterministic across replug and boots.
 
 ### `config/walkman.toml` — `[satellite]`
 
 ```toml
 [satellite]
 device = "/dev/walkman-cpx"   # udev symlink; falls back to /dev/serial/by-id scan
-volume_step = 5               # falls back to [volume].step if unset
 level_hz = 25                 # NeoPixel level updates per second
+volume_feedback_seconds = 2.0
+brightness = 0.35
+night_mode_volume_brightness = 0.08
 smoothing = 0.4               # 0..1 envelope smoothing
-peak_hold_ms = 350
+audio_capture_device = "plughw:CARD=Loopback,DEV=1"
 ```
 
 ---
 
 ## The hard part — tapping the playing audio for the envelope ⚠️
 
-**This is the #1 risk. Prototype it on the Pi before building the rest.** Mopidy
-must keep playing through the bonnet exactly as today while the satellite *also*
-gets a copy of the samples to measure.
+**This remains the #1 bench-validation risk.** Mopidy must keep playing through the
+bonnet exactly as today while the satellite *also* gets a copy of the samples to
+measure.
 
-### Recommended: ALSA tee → loopback → meter
+### Implemented: GStreamer tee → ALSA loopback → meter
 
 Fan Mopidy's output to **both** the real bonnet card and a capturable loopback,
 without changing what the user hears:
 
 1. Load `snd-aloop` (creates a `Loopback` card: what's played to `hw:Loopback,0`
    appears as capture on `hw:Loopback,1`).
-2. Define an ALSA `pcm` that tees Mopidy's output to two slaves — the real card
-   `plughw:CARD=aiyvoicebonnet` **and** the loopback playback — via `type multi` /
-   `type route`, or a GStreamer `output = ... ! tee` in `mopidy.conf`.
-3. The meter reads the loopback **capture** side: **one writer, one reader** → no
-   `dsnoop` needed. Compute `audioop.rms` on coarse chunks.
+2. `config/mopidy.conf.example` uses a GStreamer `tee` to send samples to both
+   `plughw:CARD=aiyvoicebonnet` and `plughw:CARD=Loopback,DEV=0`.
+3. The satellite reads the loopback **capture** side with `arecord` from
+   `plughw:CARD=Loopback,DEV=1` and computes RMS on coarse chunks.
 
 **Gotcha to document loudly:** with `snd-aloop`, if the meter stops draining the
 capture side, the playback side can **stall** — i.e. a dead meter could glitch the
@@ -221,9 +248,17 @@ glitch-free on this hardware).
 | CPX → Pi | `A\n` | button A pressed → `nudge_volume(-step)` |
 | CPX → Pi | `B\n` | button B pressed → `nudge_volume(+step)` |
 | Pi → CPX | `L:<0-255>\n` | current audio level for the VU ring |
-| Pi → CPX *(opt)* | `S:play` / `S:pause` | ring idle/active behavior |
+| Pi → CPX | `V:<0-100>\n` | current volume for the blue volume bar |
+| Pi → CPX | `C:<brightness>,<night_mode_volume_brightness>,<seconds>\n` | CPX render settings; the second value is used only if the physical slide switch is already in Night mode |
+| Pi → CPX | `Q\n` | query CPX logical light state |
+| CPX → Pi | `S:<night>,<mode>,<volume>,<level>\n` | logical state; `mode` is `off`, `vu`, or `volume` |
 
 Line-framed ASCII keeps both ends trivial and self-resynchronizing if a byte drops.
+`S:` is diagnostic only; volume buttons and VU streaming continue if a status reply
+is missed. The Pi logs low-rate control frames (`A`, `B`, `C:`, `Q`, `V:`, `S:`) to
+journald, but suppresses the 25 Hz `L:` stream. The CPX firmware writes no persistent
+logs to CIRCUITPY storage. `setup.sh` installs a journald drop-in that caps retained
+logs at 64 MB / 14 days with 128 MB kept free on disk.
 
 ---
 
@@ -243,18 +278,19 @@ Line-framed ASCII keeps both ends trivial and self-resynchronizing if a byte dro
 
 ## Gotchas / Known uncertainties
 
-- **ALSA tee glitch-freeness is unproven on this codec/CPU** — the dominant risk;
-  prototype first; a dead meter must not stall playback.
+- **ALSA tee glitch-freeness is unproven on this codec/CPU** — the dominant bench
+  risk; validate it first on the real Pi. A dead meter must not stall playback.
 - **Which ACM is the data channel.** With `console=True, data=True` the CPX exposes
   two CDC endpoints; the Pi must open the **data** one. Pin it with the udev rule by
   interface, and verify the `…-if02` mapping on the bench.
 - **`audioop` deprecation.** Stdlib in 3.11 (what the Pi runs) but removed in 3.13 —
-  note a fallback (`numpy`, or a hand-rolled RMS) for a future OS bump.
+  the implementation includes a hand-rolled RMS fallback for a future OS bump.
 - **USB port is singular.** The Zero 2 W has one USB data port; the CPX consumes it
   (see [`PLAN.md`](PLAN.md) §Satellite hook). No other USB peripheral can share it
   without a hub.
 - **CircuitPython on a 2018 CPX** — confirm the installed CircuitPython version
-  supports `usb_cdc`; update the UF2 if needed. Document the pinned version.
+  supports `usb_cdc`; update the UF2 if needed. Pinned/bench-verified version is
+  still TBD.
 - **Latency.** The tee adds a buffer or two of delay between sound and lights;
   acceptable for a VU meter, but tune buffer sizes if it feels laggy.
 
@@ -266,12 +302,14 @@ Line-framed ASCII keeps both ends trivial and self-resynchronizing if a byte dro
    `set_volume` move audible volume on **both** speaker and headphone, and the level
    survives a `systemctl restart walkman-mopidy` (`restore_state`).
 2. **Enumeration:** plug the CPX → `/dev/walkman-cpx` appears; the satellite service
-   comes up and logs that it found the data channel.
+   comes up, sends `Q`, and logs an `S:` status reply from the data channel.
 3. **Buttons:** press A / B → volume steps one increment each (confirm by ear and via
    `get_volume`); holding a button does nothing extra (one-step-per-press).
 4. **VU meter:** start playback → the NeoPixel ring tracks the music's amplitude in
-   real time; pause → the ring idles.
-5. **Robustness:** `systemctl stop walkman-satellite` mid-song → **audio keeps
+   real time with green pixels.
+5. **Night mode:** slide switch on → VU goes dark; press volume → a very dim blue
+   volume bar appears for 2 seconds, then turns off.
+6. **Robustness:** `systemctl stop walkman-satellite` mid-song → **audio keeps
    playing without a glitch** (the `snd-aloop` drain gotcha); `start` again → meter
    resumes.
 

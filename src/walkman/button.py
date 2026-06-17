@@ -10,8 +10,8 @@ Discrimination:
 - **single**: one short press, with no second press within `double_window`.
 - **double**: two short presses within `double_window` (3+ also counts as double).
 
-This is the first source behind a pluggable input layer — a future serial/CPX source
-can drive the same action dispatch (volume, repeat-track, etc.) without changes here.
+This is the first source behind a pluggable input layer. The CPX satellite handles
+volume through the same Mopidy client surface without overloading this arcade button.
 """
 from __future__ import annotations
 

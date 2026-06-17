@@ -1,5 +1,9 @@
 # Walkman — Step 0 dev notes / checkpoint
 
+> **Historical checkpoint.** Keep this for the hardware bring-up story and
+> troubleshooting details. For a fresh unit, use [`../README.md`](../README.md) and
+> `setup.sh`; do not treat these notes as the current install sequence.
+
 **Status: Step 0 (audio + LED foundations) COMPLETE and verified on real hardware, incl. across reboot.**
 Date: 2026-06-06. Device: Pi Zero 2 W, Raspberry Pi OS Lite 64-bit (Bookworm), kernel `6.12.87+rpt-rpi-v8`.
 Hostname `walkman-a` (`brew@walkman-a.local`), driven from the Mac over passwordless SSH (ed25519).

@@ -25,6 +25,25 @@ gpio = 23                            # BUTTON_GPIO (the bonnet's arcade button)
 long_press_seconds = 1.2             # hold this long -> safe shutdown
 double_click_window_seconds = 0.35   # second press within this -> "double"
 
+[volume]
+step = 5     # Mopidy software-mixer percent per CPX button press
+min = 0
+max = 70     # kid-safe cap; the calm ALSA baseline still sits underneath this
+
 [led]
 max_brightness = 0.65            # global dimmer (0..1) — keep it calm for kids
 breathe_period_seconds = 4.0     # "playing" green breathing cycle length
+
+[satellite]
+device = "/dev/walkman-cpx"      # CPX CircuitPython data CDC udev symlink
+level_hz = 25                    # NeoPixel VU updates per second
+volume_feedback_seconds = 2.0    # blue volume bar hold time after a press
+brightness = 0.35                # normal green VU brightness
+night_mode_volume_brightness = 0.08   # volume-cue brightness used if slide switch is in Night mode
+smoothing = 0.4                  # 0..1 current-frame weight for RMS envelope
+audio_capture_device = "plughw:CARD=Loopback,DEV=1"
+audio_rate = 44100
+audio_channels = 2
+audio_format = "S16_LE"
+meter_floor_rms = 80
+meter_ceiling_rms = 12000

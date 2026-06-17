@@ -1,5 +1,9 @@
 # Walkman — Step 3 notes (button gestures) + YouTube reliability
 
+> **Historical checkpoint.** This preserves the button and YouTube reliability
+> lessons. For current setup, use [`../README.md`](../README.md) and `setup.sh`;
+> several dependency and service steps below are now automated.
+
 **Status: Step 3 button gestures working & user-confirmed 2026-06-07.**
 - **single press** → play/pause toggle ✓
 - **double press** → next track (also resumes if paused) ✓

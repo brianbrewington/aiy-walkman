@@ -13,7 +13,11 @@ restore_state = true
 mixer = software
 # Bonnet card id is "aiyvoicebonnet" (see docs/STEP0-NOTES.md). plughw lets
 # GStreamer resample to whatever the codec wants.
-output = alsasink device=plughw:CARD=aiyvoicebonnet
+#
+# The CPX satellite VU meter needs a copy of the same samples the user hears.
+# setup.sh loads snd-aloop, and this tee sends audio to both the bonnet and the
+# loopback playback side. walkman-satellite drains the capture side with arecord.
+output = tee name=t ! queue ! audioconvert ! audioresample ! alsasink device=plughw:CARD=aiyvoicebonnet t. ! queue leaky=downstream max-size-buffers=2 ! audioconvert ! audioresample ! alsasink device=plughw:CARD=Loopback,DEV=0 sync=false async=false
 
 [http]
 enabled = true

@@ -68,6 +68,25 @@ class MopidyClientTest(unittest.TestCase):
                         lambda req, timeout=None: fake_response({"result": "4.0"})):
             self.assertTrue(m.is_ready())
 
+    def test_set_volume_clamps_and_calls_mixer(self):
+        m = MopidyClient()
+        m.call = mock.MagicMock(return_value=None)
+        self.assertEqual(m.set_volume(123), 100)
+        m.call.assert_called_once_with("core.mixer.set_volume", volume=100)
+
+    def test_nudge_volume_uses_current_volume_and_caps(self):
+        m = MopidyClient()
+        m.get_volume = mock.MagicMock(return_value=68)
+        m.set_volume = mock.MagicMock(side_effect=lambda v: v)
+        self.assertEqual(m.nudge_volume(5, lo=0, hi=70), 70)
+        m.set_volume.assert_called_once_with(70)
+
+    def test_nudge_volume_defaults_unknown_volume_to_middle(self):
+        m = MopidyClient()
+        m.get_volume = mock.MagicMock(return_value=None)
+        m.set_volume = mock.MagicMock(side_effect=lambda v: v)
+        self.assertEqual(m.nudge_volume(-5, lo=0, hi=70), 45)
+
 
 if __name__ == "__main__":
     unittest.main()

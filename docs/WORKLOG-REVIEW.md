@@ -1,5 +1,9 @@
 # WORKLOG.md — critical review (from a stuck dev at 1am)
 
+> **Historical review, mostly addressed.** This file is kept because it explains what
+> makes a good troubleshooting runbook. Many recommendations below have already been
+> folded into `WORKLOG.md`; use it as critique/history, not as the current bug list.
+
 > Audience: someone with a Pi Zero 2 W + AIY Voice Bonnet trying to (a) reproduce this
 > build and (b) debug their own variant, **with WORKLOG.md as their only guide.** This
 > is a critique, not a victory lap. The worklog is genuinely good *narrative* — the

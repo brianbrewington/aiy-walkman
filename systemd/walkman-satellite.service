@@ -1,0 +1,19 @@
+[Unit]
+Description=Walkman: CPX satellite volume buttons and NeoPixel VU meter
+After=sound.target
+Before=walkman-mopidy.service
+Wants=sound.target
+
+[Service]
+Type=simple
+# Runs unprivileged; needs serial access for the CPX and audio access for arecord.
+User=brew
+Group=audio
+SupplementaryGroups=dialout
+Environment=HOME=/home/brew
+ExecStart=/usr/bin/python3 /home/brew/walkman/src/walkman/satellite.py /home/brew/walkman/config/walkman.toml
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

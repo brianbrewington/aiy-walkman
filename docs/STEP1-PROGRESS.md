@@ -1,5 +1,9 @@
 # Walkman — Step 1 notes
 
+> **Historical checkpoint.** This captures the first successful Mopidy/YouTube Music
+> bring-up. For current setup, use [`../README.md`](../README.md), `setup.sh`, and
+> `scripts/walkman-account.sh`; several manual steps below are now automated.
+
 **Status: Step 1 (Mopidy + YouTube Music) — ✅ PASSED 2026-06-06.**
 Proven end-to-end on hardware: authenticated YouTube Music (user's subscription) →
 playlist (24 tracks loaded) → yt-dlp → GStreamer → AIY bonnet, audible. Verified

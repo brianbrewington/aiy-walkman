@@ -1,8 +1,13 @@
 # Walkman — Step 5 notes (reproducibility, provisioning & re-auth)
 
-**Status: in progress 2026-06-07.** Goal: make a *second* unit real and recover from
-cookie expiry, by capturing the by-hand build into an idempotent installer + a single
-per-device account step (which doubles as the cookie-monster). Robustness deferred.
+> **Historical checkpoint.** This records the first reproducibility pass. The current
+> source of truth is [`../README.md`](../README.md), `setup.sh`, and
+> `scripts/walkman-account.sh`; some counts below predate the CPX satellite.
+
+**Status: implemented, with later CPX additions.** Original goal: make a *second*
+unit real and recover from cookie expiry, by capturing the by-hand build into an
+idempotent installer + a single per-device account step (which doubles as the
+cookie-monster). Robustness deferred.
 
 ## What was built
 
@@ -19,8 +24,11 @@ guarded so re-runs are clean no-ops):
    **then `pip uninstall brotli`** (it gets re-pulled by `[default]` every run, so the
    install→uninstall sequence is deliberate and idempotent-by-result).
 6. `mopidy.conf` → `~/.config/mopidy/` (cp -n, never clobber).
-7. systemd: install + enable the 4 `walkman-*` units; keep stock `mopidy.service` off.
-8. ALSA baseline: install `config/asound.state` → `/var/lib/alsa/asound.state` +
+7. systemd: install + enable the `walkman-*` units; keep stock `mopidy.service` off;
+   install a journald retention cap for predictable log rotation.
+8. CPX satellite additions now load `snd-aloop`, install the CPX udev rule, and enable
+   `walkman-satellite.service`.
+9. ALSA baseline: install `config/asound.state` → `/var/lib/alsa/asound.state` +
    `alsactl restore` (the exact RT5645 routing + channel switches + calm volumes,
    captured from the working dev unit — 1540 lines).
 

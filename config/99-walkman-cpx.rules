@@ -1,0 +1,3 @@
+# Adafruit Circuit Playground Express running CircuitPython with usb_cdc.data.
+# The data CDC interface is usually interface 02; this keeps the REPL console free.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="239a", ATTRS{bInterfaceNumber}=="02", SYMLINK+="walkman-cpx", GROUP="dialout", MODE="0660"

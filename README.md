@@ -2,22 +2,25 @@
 
 A screen-free music player for kids on a **Raspberry Pi Zero 2 W** + **Google AIY
 Voice Bonnet**. Power it on and it boots straight into shuffle-playing one YouTube
-Music playlist. A single arcade button + its built-in RGB LED are the only I/O.
+Music playlist. The built-in control surface is a single arcade button + RGB LED;
+the CPX satellite adds volume buttons and a secondary light display.
 
-> **Status (2026-06):** Steps 0–4 complete and verified on hardware; Step 5
-> (reproducible install + provisioning + re-auth) in place. See
+> **Status (2026-06):** Core playback, install/provisioning, CPX volume/Night mode,
+> and re-auth tooling are in place. See
 > [`docs/WORKLOG.md`](docs/WORKLOG.md) for the full build story (and every yak-shave),
 > and [`docs/IDEAS.md`](docs/IDEAS.md) for the deferred-robustness backlog.
 
 ## What it does
 - **Boot → music**: auto-starts Mopidy and shuffle-plays the configured playlist, zero interaction.
 - **One button** (GPIO 23): **single** = play/pause · **double** = next track · **long-press (~1.2 s)** = safe shutdown (white LED, then clean power-off).
-- **RGB LED status**: green breathing = playing · amber = paused · blue blink = booting / wifi or Mopidy not ready · red blink = Mopidy down · **magenta blink = YouTube auth expired, run the cookie-monster** · white = shutting down / safe to unplug.
+- **RGB LED status**: green breathing = playing · amber = paused · blue blink = booting / wifi or Mopidy not ready · red blink = Mopidy down · **magenta blink = auth file missing / known re-auth needed** · white = shutting down / safe to unplug. Expired-cookie auto-detection is still a roadmap item.
 - **Headphones auto-switch**: plug headphones into the 3.5 mm jack → the built-in speaker mutes; unplug → it returns. (Detected on insert/remove; see Known limitations.)
+- **CPX satellite**: Circuit Playground Express buttons adjust volume; its NeoPixels show a green circular VU meter. The slide switch enables **Night mode**: no VU meter, with only a very dim blue volume cue after volume presses.
 
 ## Hardware / OS
 - Raspberry Pi Zero 2 W; **Raspberry Pi OS Lite 64-bit (Debian Bookworm)**, kernel `6.12.87+rpt-rpi-v8`.
 - AIY Voice Bonnet: **RT5645** codec (I²C 0x1a), **AIY IO MCU** (0x52), **KTD2026** button LED (0x31). The stock kernel ships none of these drivers — we build them (see below).
+- Adafruit Circuit Playground Express on the Pi's USB data port, running CircuitPython with USB CDC data enabled.
 - Built/operated from a Mac over SSH to `brew@walkman-a.local` (passwordless key). All hardware commands run on the Pi.
 
 ## Install (fresh unit)
@@ -34,9 +37,17 @@ Music playlist. A single arcade button + its built-in RGB LED are the only I/O.
    `setup.sh` installs the AIY DKMS drivers (from `drivers/prebuilt/`), disables the
    SoC's built-in audio, installs `deno` + Mopidy + Mopidy-YouTube + yt-dlp (and
    **removes `brotli`**, which segfaults in Mopidy on ARM), the player-client shim, the
-   four `walkman-*` services, and the calm ALSA mixer baseline.
+   five `walkman-*` services, the CPX udev rule, the ALSA loopback VU tap, and the
+   calm ALSA mixer baseline.
 4. Set **this unit's account** (cookies + playlist) — see next section.
-5. Power-cycle → it boots into that kid's music.
+5. Copy CPX firmware:
+   - plug the CPX into your laptop with a USB data cable;
+   - wait for the `CIRCUITPY` drive to appear;
+   - copy `cpx/boot.py` to `CIRCUITPY/boot.py`;
+   - reset the CPX so CircuitPython exposes the second USB data port;
+   - copy `cpx/code.py` to `CIRCUITPY/code.py`;
+   - eject/unplug the CPX, then plug it into the Pi's USB data port.
+6. Power-cycle → it boots into that kid's music.
 
 > **Each unit needs a unique hostname** (`walkman-a`, `walkman-b`, …) — two boxes with
 > the same name collide on the network (both answer to `walkman-a.local`). Set it in
@@ -52,8 +63,10 @@ Music playlist. A single arcade button + its built-in RGB LED are the only I/O.
 ## YouTube Music auth (per device) + re-auth ("cookie-monster")
 Auth is **per device** (each unit can be a different kid's account). It uses a
 browser **cookie** file (durable OAuth isn't supported by the maintained extension —
-see `docs/WORKLOG.md`). Cookies expire periodically; when they do, the LED blinks
-**magenta** and you re-run the same step.
+see `docs/WORKLOG.md`). Cookies expire periodically; when playback stops working
+because auth has gone stale, re-run the same cookie-monster step. The magenta LED
+currently means the auth file is missing or the box already knows setup is needed;
+automatic expired-cookie detection is still deferred.
 
 **Get a cookies.txt:** on a computer logged into the target YouTube Music account,
 export `music.youtube.com` cookies with the open-source **"Get cookies.txt LOCALLY"**
@@ -84,6 +97,9 @@ takes). In Incognito the icon lives in the puzzle-piece (🧩) menu even if pinn
 scp cookies.txt brew@walkman-a.local:/tmp/c.txt && \
 ssh -t brew@walkman-a.local '~/walkman/scripts/walkman-account.sh --cookies /tmp/c.txt && rm -f /tmp/c.txt'
 ```
+`walkman-account.sh` also removes cookies handed to it under `/tmp` on any exit, so
+a failed playlist start should not leave the copied cookie sitting on the Pi.
+
 The playlist ID is the `list=` value from a playlist URL
 (`https://music.youtube.com/playlist?list=PL...`). The auth file lives at
 `~/.config/walkman/ytmusic-auth.json` (mode 600) and is referenced from
@@ -93,12 +109,32 @@ The playlist ID is the `list=` value from a playlist URL
 | service | role |
 |---|---|
 | `walkman-mopidy` | Mopidy (YouTube Music) audio server; loads the player-client shim via `PYTHONPATH` |
+| `walkman-satellite` | CPX USB serial + volume buttons + NeoPixel VU meter |
 | `walkman-autoplay` | oneshot: waits for Mopidy + network, loads the playlist, shuffle-plays |
 | `walkman-controller` | button gestures → actions, and the player-state → LED status |
 | `walkman-jack` | mutes the speaker when headphones are plugged in |
 
-Config: `config/walkman.toml` (playlist, button thresholds, LED brightness/breathe);
+Config: `config/walkman.toml` (playlist, button thresholds, volume cap, CPX satellite,
+LED brightness/breathe);
 `~/.config/mopidy/mopidy.conf` (audio device, YouTube Music auth path).
+
+Logs go to journald. `setup.sh` installs `/etc/systemd/journald.conf.d/walkman.conf`
+to cap persistent logs at 64 MB, keep 128 MB free, split files at 8 MB, and retain at
+most 14 days. That keeps enough history for debugging without letting a bad YouTube
+or CPX loop fill the SD card.
+
+## CPX controls
+- **Button A**: volume down by 5, capped by `[volume].min` / `[volume].max`.
+- **Button B**: volume up by 5, capped by `[volume].min` / `[volume].max`.
+- **Normal slide-switch position**: green circular VU meter from the actual Pi playback stream.
+- **Night mode slide-switch position**: VU off; volume presses show only a very dim blue level bar for 2 seconds.
+- **Diagnostics**: the Pi can send `Q` over the CPX data channel; the CPX replies
+  with `S:<night>,<mode>,<volume>,<level>` so logs can confirm its logical light state.
+  `walkman-satellite` logs low-rate control frames in journald (`A`, `B`, `C:`, `Q`,
+  `V:`, `S:`) but intentionally does not log the 25 Hz `L:` level stream. The CPX
+  firmware does not write logs to its tiny flash filesystem. The `C:` frame only
+  sends render settings; the physical slide switch still decides whether Night mode
+  is active.
 
 ## Known limitations / uncertainties
 - **YouTube anti-bot fragility:** playback relies on `yt-dlp` + the unofficial
@@ -108,18 +144,21 @@ Config: `config/walkman.toml` (playlist, button thresholds, LED brightness/breat
   `bgutil-ytdlp-pot-provider`. Full detail in `docs/WORKLOG.md`.
 - **Jack detect at boot:** if the device boots with a plug already in the jack, the
   RT5645 detect reads "empty" until you replug. Logged in `docs/IDEAS.md`.
+- **CPX data interface mapping:** the udev rule targets CircuitPython's USB CDC data
+  interface. If `/dev/walkman-cpx` does not appear, confirm `cpx/boot.py` is installed
+  and check which `/dev/ttyACM*` endpoint has interface number `02`. A healthy setup
+  has `/dev/walkman-cpx` present and `systemctl status walkman-satellite` running.
+- **VU tap dependency:** the green VU meter depends on `snd-aloop` plus the Mopidy
+  GStreamer tee in `mopidy.conf`; stopping `walkman-satellite` may affect the loopback
+  drain until systemd restarts it.
 - **Kernel drift:** the AIY drivers are patched for kernel 6.12; a newer kernel may
   break them. Hold/pin the kernel or rebuild from source (`drivers/patches/`).
 
 ## Deferred / roadmap
 - **Robustness (next pass):** jack-detect-at-boot fix, wifi auto-recovery, overlayfs/
-  read-only-root for power-loss resilience, magenta auto-trigger. See `docs/IDEAS.md`.
-- **Satellite expansion:** a bidirectional USB-serial link to an Adafruit Circuit
-  Playground Express for volume input + a secondary status display + a NeoPixel VU
-  meter (lightweight Pi-side level envelope, not FFT). The Pi Zero 2 W's single USB
-  data port is the constraint; an LM3915 analog VU ladder is a separate optional
-  hardware project. Requested kid features: **repeat-track** (Nathan) and a now-playing
-  LCD. See `docs/IDEAS.md`.
+  read-only-root for power-loss resilience, expired-cookie auto-trigger. See `docs/IDEAS.md`.
+- **Future satellite passengers:** repeat-track and a now-playing LCD are still good
+  fits for the CPX/serial path. See `docs/IDEAS.md`.
 
 ## Tests
 Pure-logic unit tests (no Pi/hardware needed — run on any machine):
@@ -127,16 +166,20 @@ Pure-logic unit tests (no Pi/hardware needed — run on any machine):
 python3 -m unittest discover -s tests        # or: pytest tests/
 ```
 They cover the gesture state machine, LED rendering + shutdown latch, the Mopidy
-JSON-RPC client, autoplay, and the YouTube auth converter — including regression
-guards for the bugs we hit (next-on-paused→silence, single-vs-double, SAPISIDHASH).
+JSON-RPC client, CPX satellite helpers, CPX firmware protocol/rendering with fake
+serial/buttons/NeoPixels, autoplay, and the YouTube auth converter — including
+regression guards for the bugs we hit (next-on-paused→silence, single-vs-double,
+SAPISIDHASH).
 
 ## Docs map
 - `docs/SETUP_PLAYLIST_AND_COOKIES.html` — the **hand-to-a-kid** interactive setup guide
   (playlist + cookies; open in a browser)
 - `docs/WORKLOG.md` — full chronological build narrative + gotchas (read this if stuck)
 - `docs/POWER-LOSS.md` — safe-shutdown + overlayfs resilience
+- `docs/CPX-VOLUME-PLAN.md` — CPX satellite implementation notes + bench checklist
 - `docs/ROBUSTNESS-NOTES.md` — tests + the robustness pass
-- `docs/STEP0-NOTES.md … STEP5-NOTES.md` — per-step detail
+- `docs/STEP0-NOTES.md … STEP5-NOTES.md` — historical checkpoints; useful for learning
+  what happened, not the current install path
 - `docs/IDEAS.md` — backlog / deferred robustness / future features
-- `docs/PLAN.md` — the build plan
+- `docs/PLAN.md` — historical build plan and original tradeoffs
 - `drivers/` — prebuilt AIY DKMS debs + the source patches

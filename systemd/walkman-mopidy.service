@@ -1,7 +1,7 @@
 [Unit]
 Description=Walkman: Mopidy (YouTube Music) audio server
-After=network-online.target sound.target
-Wants=network-online.target
+After=network-online.target sound.target walkman-satellite.service
+Wants=network-online.target walkman-satellite.service
 
 [Service]
 Type=simple

@@ -14,12 +14,11 @@ separately in [`CPX-VOLUME-PLAN.md`](CPX-VOLUME-PLAN.md).
 
 ## Context
 
-The player has **no volume control today**. [`PLAN.md`](PLAN.md) §Key-decisions
-reserved an "ALSA mixer get/set, wired but bound to no gesture" capability, but it
-was never built — `controller.py` only does play/pause, next, and shutdown. The one
-arcade button is already full (single = play/pause, double = next, long = shutdown),
-so volume needs a **new input source**. The cheapest possible source is two physical
-buttons on otherwise-unused GPIO pins, handled by the controller we already run.
+The CPX route now provides volume, but this remains the documented minimal fallback:
+two physical buttons on otherwise-unused GPIO pins, handled by the controller we
+already run. The one arcade button is already full (single = play/pause, double =
+next, long = shutdown), so any non-CPX volume route still needs a **new input
+source**.
 
 ### Confirmed design decisions
 

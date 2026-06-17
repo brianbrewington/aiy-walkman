@@ -39,7 +39,8 @@ Nothing persists across a reboot. So these DON'T stick until you disable the ove
 ```
 sudo raspi-config nonint disable_overlayfs   # (or interactive: set Overlay FS = No)
 sudo reboot
-# ... now the FS is writable: run walkman-account.sh, edit config, update, etc. ...
+# ... now the FS is writable. Example: refresh cookies from a file copied to /tmp ...
+~/walkman/scripts/walkman-account.sh --cookies /tmp/cookies.txt
 sudo raspi-config nonint enable_overlayfs
 sudo reboot
 ```
