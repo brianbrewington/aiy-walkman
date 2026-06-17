@@ -59,7 +59,7 @@ class SatelliteConfig:
     level_hz: int = 25
     volume_feedback_seconds: float = 2.0
     brightness: float = 0.35
-    night_mode_volume_brightness: float = 0.08
+    night_mode_volume_brightness: float = 0.004
     smoothing: float = 0.4
     audio_capture_device: str = "plughw:CARD=Loopback,DEV=1"
     audio_rate: int = 44100
@@ -110,7 +110,7 @@ def parse_configs(cfg: dict) -> tuple[str, VolumeConfig, SatelliteConfig]:
         volume_feedback_seconds=float(sat.get("volume_feedback_seconds", 2.0)),
         brightness=float(sat.get("brightness", 0.35)),
         night_mode_volume_brightness=float(
-            sat.get("night_mode_volume_brightness", sat.get("night_volume_brightness", 0.08))
+            sat.get("night_mode_volume_brightness", sat.get("night_volume_brightness", 0.004))
         ),
         smoothing=clamp(float(sat.get("smoothing", 0.4)), 0.0, 1.0),
         audio_capture_device=str(sat.get("audio_capture_device", "plughw:CARD=Loopback,DEV=1")),

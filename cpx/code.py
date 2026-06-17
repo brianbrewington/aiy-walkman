@@ -43,7 +43,7 @@ class CpxApp:
         self.monotonic = monotonic or time.monotonic
 
         self.normal_brightness = 0.35
-        self.night_mode_volume_brightness = 0.08
+        self.night_mode_volume_brightness = 0.004
         self.volume_feedback_seconds = 2.0
         self.current_level = 0
         self.current_volume = 0

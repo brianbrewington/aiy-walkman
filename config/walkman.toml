@@ -39,7 +39,8 @@ device = "/dev/walkman-cpx"      # CPX CircuitPython data CDC udev symlink
 level_hz = 25                    # NeoPixel VU updates per second
 volume_feedback_seconds = 2.0    # blue volume bar hold time after a press
 brightness = 0.35                # normal green VU brightness
-night_mode_volume_brightness = 0.08   # volume-cue brightness used if slide switch is in Night mode
+night_mode_volume_brightness = 0.004  # Night-mode volume-cue brightness. 0.004 => blue 1/255, the dimmest
+                                      # visible glow (lower rounds to off). Field-tuned for a dark room.
 smoothing = 0.4                  # 0..1 current-frame weight for RMS envelope
 audio_capture_device = "plughw:CARD=Loopback,DEV=1"
 audio_rate = 44100

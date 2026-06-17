@@ -179,7 +179,8 @@ class CpxFirmwareTest(unittest.TestCase):
 
         app.current_volume = 50
         app.render_volume()
-        night_blue = (0, 0, int(255 * 0.08))
+        night_blue = (0, 0, int(255 * 0.004))  # 1/255 — dimmest visible glow
+        self.assertEqual(night_blue, (0, 0, 1))
         self.assertEqual(pixels.values[:5], [night_blue] * 5)
         self.assertEqual(pixels.values[5:], [cpx.OFF] * 5)
 
