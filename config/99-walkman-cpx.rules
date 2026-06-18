@@ -1,3 +1,8 @@
 # Adafruit Circuit Playground Express running CircuitPython with usb_cdc.data.
 # The data CDC interface is usually interface 02; this keeps the REPL console free.
-SUBSYSTEM=="tty", ATTRS{idVendor}=="239a", ATTRS{bInterfaceNumber}=="02", SYMLINK+="walkman-cpx", GROUP="dialout", MODE="0660"
+#
+# Match on ENV{} (computed by the usb_id builtin), NOT ATTRS{}: idVendor lives on the
+# USB device while bInterfaceNumber lives on the USB interface — two different parents —
+# and udev requires all ATTRS{} in one rule to match the *same* parent, so the ATTRS form
+# silently never fires. ENV{ID_VENDOR_ID}/ENV{ID_USB_INTERFACE_NUM} are both on the tty.
+SUBSYSTEM=="tty", ENV{ID_VENDOR_ID}=="239a", ENV{ID_USB_INTERFACE_NUM}=="02", SYMLINK+="walkman-cpx", GROUP="dialout", MODE="0660"
