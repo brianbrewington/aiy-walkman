@@ -172,6 +172,11 @@ class CpxApp:
         while "\n" in self.line_buffer:
             line, self.line_buffer = self.line_buffer.split("\n", 1)
             self.handle_line(line)
+        # Bound the residual partial line. Protocol lines are short (<40 chars); a host
+        # flood without a newline must not grow line_buffer until MemoryError on the 32KB
+        # SAMD21. 128 leaves ample headroom for any real line.
+        if len(self.line_buffer) > 128:
+            self.line_buffer = ""
 
     def tick(self):
         now = self.monotonic()
@@ -205,6 +210,13 @@ def make_hardware_app():
     import usb_cdc
 
     serial = usb_cdc.data or usb_cdc.console
+    # Don't let a frozen/slow Pi block the render loop: time-bound writes (write_line
+    # swallows the resulting timeout and drops the frame) and never block on reads.
+    try:
+        serial.timeout = 0
+        serial.write_timeout = 0.05
+    except Exception:
+        pass
     pixels = neopixel.NeoPixel(board.NEOPIXEL, NUM_PIXELS, brightness=1.0, auto_write=False)
 
     button_a = digitalio.DigitalInOut(board.BUTTON_A)

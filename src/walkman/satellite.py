@@ -380,6 +380,9 @@ def serial_loop(stop: threading.Event, link: SerialLink, mopidy: MopidyClient,
 
 
 def audio_meter_loop(stop: threading.Event, link: SerialLink, cfg: SatelliteConfig) -> None:
+    if _audioop is None:
+        log("WARNING: audioop unavailable (Python 3.13+); using the slow pure-Python "
+            "RMS fallback — VU may lag on a Pi Zero. Use Python<=3.12 or add numpy.")
     chunk_frames = max(64, int(cfg.audio_rate / cfg.level_hz))
     # S16_LE only for now; keep the config explicit so future formats fail obviously.
     sample_width = 2

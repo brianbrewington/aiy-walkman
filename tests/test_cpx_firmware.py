@@ -127,6 +127,17 @@ class CpxFirmwareTest(unittest.TestCase):
         self.assertEqual(app.current_volume, 70)
         self.assertEqual(app.volume_until, clock[0] + 1.5)
 
+    def test_line_buffer_is_bounded_against_newlineless_flood(self):
+        app, serial, *_rest = make_app()
+        serial.feed(b"X" * 200)   # garbage flood, no newline
+        app.poll_serial()
+        # residual partial line is dropped, not grown unbounded (32KB SAMD21)
+        self.assertEqual(app.line_buffer, "")
+        # a valid line still parses cleanly afterward
+        serial.feed(b"V:55\n")
+        app.poll_serial()
+        self.assertEqual(app.current_volume, 55)
+
     def test_status_query_reports_logical_state(self):
         app, serial, _pixels, _a, _b, _slide, clock = make_app(now=10.0)
 
