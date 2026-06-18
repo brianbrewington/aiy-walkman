@@ -1,7 +1,9 @@
 # Walkman — CPX Volume + VU-Meter Satellite (plan)
 
-**Status:** CODE IMPLEMENTED · bench validation still required · 2026-06-17 · Pi
-Zero 2 W, AIY Voice Bonnet, kernel 6.12.87+rpt-rpi-v8
+**Status:** HARDWARE-VALIDATED on `walkman-b` (buttons + volume bar + night mode;
+green VU not yet exercised — needs music) · 2026-06-17 · Pi Zero 2 W, AIY Voice
+Bonnet, kernel 6.12.87+rpt-rpi-v8 · **board flash/bring-up procedure:**
+[`CPX-BOARD-BRINGUP.md`](CPX-BOARD-BRINGUP.md) · build story: [`WORKLOG.md`](WORKLOG.md) §15
 
 **TL;DR.** Add an Adafruit **Circuit Playground Express** (circa 2018) on the Pi's
 single USB port as an external satellite. Its **two buttons** become volume
@@ -29,9 +31,16 @@ Built in the repo:
 
 Verified off-hardware: Python compilation, shell syntax, Pi-side unit tests, and
 CPX firmware protocol/rendering tests with fake serial, fake buttons, fake slide
-switch, and fake NeoPixels. Still needs bench validation on the real Pi/CPX for
-`/dev/walkman-cpx`, the GStreamer tee, and glitch-free audio when
-`walkman-satellite` restarts.
+switch, and fake NeoPixels.
+
+**Hardware-validated on `walkman-b` (2026-06-17):** CircuitPython flashed to 10.2.1,
+firmware deployed (precompiled — see [`CPX-BOARD-BRINGUP.md`](CPX-BOARD-BRINGUP.md)
+for the RAM gotcha), and the full button→volume→bar loop confirmed end-to-end
+(`A`/`B` nudge Mopidy-style volume, clamped to the kid-safe cap; blue bar renders;
+night mode dims to the floor). **Not yet exercised:** the green VU meter (needs
+Mopidy + the ALSA loopback producing audio), `/dev/walkman-cpx` udev autostart, and
+glitch-free audio across a `walkman-satellite` restart — `walkman-b` has no music
+provisioned yet.
 
 ---
 

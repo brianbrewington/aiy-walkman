@@ -1050,7 +1050,101 @@ self-explanatory on the device.
 
 ---
 
+## 15. CPX satellite — second unit + hardware bring-up (2026-06-17)
+
+Two milestones in one session: a **second physical unit** (`walkman-b`) came
+online, and the **CPX volume/VU satellite** went from "code implemented, bench
+validation required" (per [`CPX-VOLUME-PLAN.md`](CPX-VOLUME-PLAN.md)) to verified
+on real hardware. The step-by-step, repeat-it-yourself procedure is its own doc:
+**[`CPX-BOARD-BRINGUP.md`](CPX-BOARD-BRINGUP.md)**. This section is the *story* and
+the gotchas.
+
+### 15.1 Bringing in machine-B work + the second box
+
+The satellite code was authored on a different machine and arrived as an
+uncommitted working tree (same base commit) at `~/Downloads/aiy-walkman`. Merged
+it in by `rsync` (excluding `.git`/`__pycache__`/`.env`), so `git status` on the
+Code repo showed exactly the same change set — 23 modified + 8 new files
+(`src/walkman/satellite.py`, `cpx/{boot,code}.py`, the udev rule, the systemd unit,
+journald + modules-load configs, two test files). A code review on merge surfaced
+one real safety gap (see 15.5).
+
+`walkman-b` (Pi Zero 2 W, `192.168.86.20`) is the **second** unit — `walkman-a` is
+the first (distinct hostname, distinct host key, both in `known_hosts`). Set up
+passwordless SSH; **`ssh-copy-id` silently no-op'd** (reported nothing, installed
+nothing) — the fix was to append the pubkey to `~/.ssh/authorized_keys` directly
+with correct perms (`700 ~/.ssh`, `600` the file).
+
+### 15.2 The CircuitPython version wall
+
+The CPX enumerated as `/dev/ttyACM0` running a **2020 demo on CircuitPython
+6.1.0-beta.2**. Our `boot.py` needs `usb_cdc.enable()` (a *second* CDC data
+channel), which **only exists in CircuitPython ≥ 7.0**. So nothing could work until
+the board was upgraded. Flashing CircuitPython is a UF2-bootloader operation —
+**double-tap RESET** (NeoPixels go green, `CPLAYBOOT` drive appears), copy the
+`.uf2`, it auto-reboots. The one step that genuinely needs hands on the board.
+Flashed **10.2.1**; both `if00` (console) **and** `if02` (data) then enumerated.
+
+### 15.3 The 32 KB-RAM wall — `MemoryError`, and the `.mpy` fix
+
+With the right CircuitPython, `code.py` *still* wouldn't run: `MemoryError`. The
+SAMD21 has **32 KB RAM**; under CircuitPython 10 the free heap is ~15 KB, and
+**compiling the ~7 KB `code.py` from source on-device overflows it** (the runtime
+working set is tiny — it's the compile spike). The fix is to compile off-device:
+
+- Pulled the official **`mpy-cross` 10.2.1** (linux-`aarch64`, emitting mpy v6.3)
+  from `downloads.circuitpython.org` and compiled `code.py` → `wcpx.mpy` on the Pi.
+- CircuitPython's supervisor only runs a **`.py`** as the entry point (never a
+  `code.mpy`), so `code.py` became a 2-line launcher (`import wcpx; wcpx.main()`)
+  and the heavy logic lives in `lib/wcpx.mpy`. Only external lib needed is
+  `neopixel.mpy` (its `adafruit_pixelbuf` dep is a built-in core module), pulled
+  version-matched from the 10.x bundle.
+
+After redeploying + a hard reset (so `boot.py` re-runs and re-enables the data
+CDC), the protocol came alive: `Q → S:…` status, `V:` blue bar, `L:` green VU.
+
+### 15.4 The debugging trap that cost an hour — invisible test windows
+
+The buttons *appeared* dead through ~four test rounds. They were fine the whole
+time. Two compounding causes:
+
+1. Our firmware gives **no local feedback** on a button press — it just emits a
+   serial byte. So the human pressing has zero confirmation anything happened.
+2. A one-shot SSH "listen for N seconds" command **shows nothing until it returns**,
+   so the operator can't tell when the capture window is actually live and presses
+   into a dead window.
+
+What finally worked: run listeners with **`run_in_background`** (so the "press now"
+prompt is visible *immediately* and the user controls timing), and load a temporary
+`code.py` that **lights the ring on press** (red=A, blue=B) for instant on-device
+proof. The slide switch made a good canary — a latching input you can leave in a
+position and confirm the harness reads it. Lesson, now in the bring-up doc:
+**never debug a no-feedback input through a blind, fixed-length capture.** Once
+visible, 74 presses captured cleanly: `A` = volume down, `B` = up, clamped at the
+kid-safe cap (0…70). Full CPX→Pi→CPX round-trip confirmed.
+
+### 15.5 Two fixes worth keeping
+
+- **Kid-safe volume cap was bypassable at boot.** The button handler only clamps
+  *deltas*; Mopidy's `restore_state` reloads the last saved volume on startup,
+  which can be above the cap. Added `enforce_volume_cap()` — once Mopidy is
+  reachable, clamp the current volume into `[lo, hi]`. The satellite starts before
+  Mopidy, so it waits, then clamps.
+- **Night mode field-tuned to the floor.** These NeoPixels throw real light even
+  at minimum; "night" wants the dimmest *visible* glow. Lowered
+  `night_mode_volume_brightness` `0.08 → 0.004` (= blue **1/255**; lower rounds to
+  off), across firmware default, host config, and `walkman.toml`.
+
+Commits: `e8c6bec` (satellite merge + review fixes), `7a631bf` (night dimming).
+82 tests green. **Still open:** install the udev rule + `walkman-satellite.service`
+on `walkman-b` so it autostarts, and provision music (Mopidy + cookies/playlist) —
+the unit has none yet, so the green VU (which needs real audio off the ALSA
+loopback) is the one piece not yet exercised end-to-end.
+
+---
+
 *Source notes this log synthesizes: `MEMORY.md` and the project memory files;
 `docs/STEP0-NOTES.md`, `STEP1-PROGRESS.md`, `STEP2-NOTES.md`, `STEP3-NOTES.md`,
+`CPX-BOARD-BRINGUP.md`, `CPX-VOLUME-PLAN.md`,
 `PLAN.md`, `IDEAS.md`; `README.md`; `drivers/patches/*` + `drivers/prebuilt/README.md`;
 `shim/sitecustomize.py`; `config/*`; `systemd/*`; and `src/walkman/*.py`.*

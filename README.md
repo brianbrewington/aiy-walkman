@@ -40,13 +40,11 @@ the CPX satellite adds volume buttons and a secondary light display.
    five `walkman-*` services, the CPX udev rule, the ALSA loopback VU tap, and the
    calm ALSA mixer baseline.
 4. Set **this unit's account** (cookies + playlist) — see next section.
-5. Copy CPX firmware:
-   - plug the CPX into your laptop with a USB data cable;
-   - wait for the `CIRCUITPY` drive to appear;
-   - copy `cpx/boot.py` to `CIRCUITPY/boot.py`;
-   - reset the CPX so CircuitPython exposes the second USB data port;
-   - copy `cpx/code.py` to `CIRCUITPY/code.py`;
-   - eject/unplug the CPX, then plug it into the Pi's USB data port.
+5. Flash + provision the CPX satellite — **follow [`docs/CPX-BOARD-BRINGUP.md`](docs/CPX-BOARD-BRINGUP.md)**.
+   A fresh CPX usually needs a CircuitPython upgrade first (the firmware needs ≥ 7.0
+   for the second USB data channel), and `cpx/code.py` must be shipped **precompiled**
+   to a `.mpy` + tiny launcher because the board's 32 KB RAM can't compile it
+   on-device. The runbook has the exact, copy-pasteable steps and the gotchas.
 6. Power-cycle → it boots into that kid's music.
 
 > **Each unit needs a unique hostname** (`walkman-a`, `walkman-b`, …) — two boxes with
@@ -176,7 +174,8 @@ SAPISIDHASH).
   (playlist + cookies; open in a browser)
 - `docs/WORKLOG.md` — full chronological build narrative + gotchas (read this if stuck)
 - `docs/POWER-LOSS.md` — safe-shutdown + overlayfs resilience
-- `docs/CPX-VOLUME-PLAN.md` — CPX satellite implementation notes + bench checklist
+- `docs/CPX-BOARD-BRINGUP.md` — **flash + bring up the CPX on a new unit** (CircuitPython upgrade, the 32 KB-RAM `.mpy` gotcha, verify steps, troubleshooting)
+- `docs/CPX-VOLUME-PLAN.md` — CPX satellite design + protocol reference
 - `docs/ROBUSTNESS-NOTES.md` — tests + the robustness pass
 - `docs/STEP0-NOTES.md … STEP5-NOTES.md` — historical checkpoints; useful for learning
   what happened, not the current install path
