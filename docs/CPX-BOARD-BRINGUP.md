@@ -274,7 +274,9 @@ code → REPL; `Ctrl-D` = run / soft-reboot (re-runs `code.py`, does **not** re-
 | Symptom | Cause → fix |
 |---|---|
 | `MemoryError` in `code.py` output | Compiling 7 KB source on 32 KB RAM. Ship the launcher + `lib/wcpx.mpy` (§3), don't put the full source in `code.py`. |
-| Only `if00` appears, no `if02`/`ttyACM1` | `boot.py` didn't run. You did a soft reload, not a hard reset — power-cycle or `microcontroller.reset()` (§4). |
+| Only `if00` appears, no `if02`/`ttyACM1` | `boot.py` didn't run, **or** the `microcontroller.reset()` raced the auto-reload triggered by your file write. Let the post-write auto-reload settle (~3 s) *then* hard-reset. Confirm with `usb_cdc.data` at the REPL — `None` means `boot.py`'s `usb_cdc.enable()` didn't take. |
+| CIRCUITPY mounts **read-only**, `cp` fails `Read-only file system` | Corrupt FAT — usually from resetting/unplugging without `sync && umount`. CircuitPython itself can't write either (`OSError [Errno 30]` at the REPL). **Repair:** at the REPL `import storage; storage.erase_filesystem()` (reformats — **wipes** boot.py/code.py/lib), then redeploy §4. Always `sync && sudo umount` the drive *before* resetting the CPX. |
+| `ImportError: no module named 'binascii'` | The samd21 CircuitPython build is minimal and omits `binascii`/`ubinascii`. Don't transfer files by base64-over-REPL; mount CIRCUITPY and copy, or repair the FS first (row above). |
 | `Permission denied` opening `/dev/ttyACM*` | User not in `dialout`. `sudo usermod -aG dialout $USER` then re-login. |
 | `incompatible .mpy file` on import | `wcpx.mpy`/`neopixel.mpy` compiled for a different CircuitPython major. Recompile with the matching `mpy-cross` and pull the matching bundle (§3). |
 | Buttons "do nothing" in a serial listen | Almost always the testing-feedback trap, not the buttons — see the ⚠ box in §4. |
