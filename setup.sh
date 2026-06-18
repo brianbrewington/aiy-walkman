@@ -39,7 +39,7 @@ apt-get install -y \
   i2c-tools evtest alsa-utils network-manager \
   mopidy gstreamer1.0-alsa gstreamer1.0-plugins-good \
   gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
-  python3-gpiozero python3-lgpio python3-smbus2 python3-serial
+  python3-pip python3-gpiozero python3-lgpio python3-smbus2 python3-serial
 # Kernel headers for the DKMS driver builds (running kernel + the rpi meta).
 apt-get install -y "linux-headers-$(uname -r)" 2>/dev/null \
   || apt-get install -y linux-headers-rpi-v8 || true
