@@ -75,8 +75,10 @@ def main() -> int:
         log("ERROR: Mopidy never became ready")
         return 2
 
-    # Retry the load+play with backoff (covers wifi/yt-dlp warm-up).
-    delays = [0, 5, 10, 20, 30]
+    # Retry the load+play with backoff (covers wifi/yt-dlp warm-up). Generous tail:
+    # a one-shot has no service-level retry, so a slow/flaky boot must be ridden out
+    # here rather than failing until the next reboot. Stays within TimeoutStartSec.
+    delays = [0, 5, 10, 20, 30, 45, 60, 60]
     for i, delay in enumerate(delays, 1):
         if delay:
             time.sleep(delay)

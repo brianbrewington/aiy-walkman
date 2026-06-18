@@ -54,28 +54,40 @@ def find_jack_event_device() -> str | None:
 
 def query_inserted(dev: str) -> bool:
     """Read current jack state via evtest (exit 10 = inserted, 0 = not)."""
-    r = subprocess.run(
-        ["evtest", "--query", dev, "EV_SW", "SW_HEADPHONE_INSERT"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    try:
+        r = subprocess.run(
+            ["evtest", "--query", dev, "EV_SW", "SW_HEADPHONE_INSERT"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        log("evtest --query timed out; assuming not inserted")
+        return False
     return r.returncode == 10
 
 
-def _switch(control: str, on: bool) -> None:
-    subprocess.run(
-        ["amixer", "-c", CARD, "--", "cset", f"name={control}", "on" if on else "off"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+def _switch(control: str, on: bool) -> bool:
+    """Set an ALSA on/off control. Returns True only if amixer succeeded."""
+    try:
+        r = subprocess.run(
+            ["amixer", "-c", CARD, "--", "cset", f"name={control}", "on" if on else "off"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        log(f"amixer cset '{control}' timed out")
+        return False
+    return r.returncode == 0
 
 
-def apply(inserted: bool) -> None:
+def apply(inserted: bool) -> bool:
     # Drive both outputs mutually exclusively so you never hear both at once:
     #   jack inserted -> headphones only (speaker off, headphone on)
     #   jack empty    -> speaker only    (speaker on, headphone off)
-    _switch(SPEAKER_SWITCH, not inserted)
-    _switch(HEADPHONE_SWITCH, inserted)
-    log(f"headphones {'IN' if inserted else 'OUT'} -> "
-        f"speaker {'OFF' if inserted else 'ON'}, headphone {'ON' if inserted else 'OFF'}")
+    ok_speaker = _switch(SPEAKER_SWITCH, not inserted)
+    ok_headphone = _switch(HEADPHONE_SWITCH, inserted)
+    if ok_speaker and ok_headphone:
+        log(f"headphones {'IN' if inserted else 'OUT'} -> "
+            f"speaker {'OFF' if inserted else 'ON'}, headphone {'ON' if inserted else 'OFF'}")
+    return ok_speaker and ok_headphone
 
 
 def main() -> int:
@@ -86,8 +98,15 @@ def main() -> int:
         dev = find_jack_event_device()
     log(f"watching {dev} (card {CARD})")
 
-    # set initial speaker state to match the current jack state
-    apply(query_inserted(dev))
+    # Set initial routing to match the current jack state. At boot the ALSA controls
+    # may not be ready yet (card/alsa-restore still coming up), and a silently-failed
+    # cset would leave routing wrong until the next physical jack event — so retry.
+    inserted = query_inserted(dev)
+    for attempt in range(1, 11):
+        if apply(inserted):
+            break
+        log(f"initial mixer apply failed (controls not ready?); retry {attempt}/10")
+        time.sleep(1)
 
     with open(dev, "rb") as f:
         while True:

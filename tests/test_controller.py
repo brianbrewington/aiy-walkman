@@ -58,11 +58,21 @@ class GestureTest(unittest.TestCase):
     def test_long_latches_white_and_powers_off(self):
         c = make_controller("playing")
         with mock.patch("walkman.controller.subprocess") as sp:
+            sp.run.return_value.returncode = 0   # poweroff succeeds
             c.handle_gesture("long")
         c.led.force_mode.assert_called_once_with(led.SHUTDOWN)   # latched, not set_mode
         self.assertTrue(c._shutting_down)
         calls = [args[0] for args, _ in sp.run.call_args_list]
         self.assertIn(["systemctl", "poweroff"], calls)
+
+    def test_long_press_recovers_if_poweroff_fails(self):
+        # if poweroff fails/hangs, don't leave the device wedged under root
+        c = make_controller("playing")
+        with mock.patch("walkman.controller.subprocess") as sp:
+            sp.run.return_value.returncode = 1   # poweroff fails
+            c.handle_gesture("long")
+        self.assertFalse(c._shutting_down)        # shutdown flag cleared -> gestures live
+        c.led.release_force.assert_called_once()  # white latch released
 
     def test_action_error_does_not_crash(self):
         from walkman.mopidy_client import MopidyError

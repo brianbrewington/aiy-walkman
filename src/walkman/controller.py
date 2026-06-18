@@ -114,7 +114,17 @@ class Controller:
         self.led.force_mode(led.SHUTDOWN)  # latch white so the poller can't override it
         time.sleep(0.3)                   # let the LED latch white first
         subprocess.run(["sync"])
-        subprocess.run(["systemctl", "poweroff"])
+        try:
+            r = subprocess.run(["systemctl", "poweroff"], timeout=30)
+            if r.returncode != 0:
+                raise RuntimeError(f"systemctl poweroff exited {r.returncode}")
+            # success: the box is powering off; this process dies with it.
+        except Exception as e:
+            # poweroff failed or hung — don't leave the device wedged (white LED
+            # latched, gestures disabled) under root. Recover so it stays operable.
+            log(f"poweroff failed ({e}); staying up and re-enabling control")
+            self._shutting_down = False
+            self.led.release_force()
 
     # --- LED status poller ---
     @staticmethod

@@ -1,6 +1,6 @@
 [Unit]
 Description=Walkman: mute built-in speaker when headphones are plugged in
-After=sound.target
+After=sound.target alsa-restore.service
 Wants=sound.target
 
 [Service]

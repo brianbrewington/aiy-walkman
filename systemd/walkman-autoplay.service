@@ -12,7 +12,8 @@ Environment=HOME=/home/brew
 # Waits for Mopidy + network, loads the playlist, shuffle+repeat, and plays.
 # Has its own retry/backoff, so give it room before systemd calls it failed.
 ExecStart=/usr/bin/python3 /home/brew/walkman/src/walkman/autoplay.py /home/brew/walkman/config/walkman.toml
-TimeoutStartSec=300
+# Room for the in-script wait-for-Mopidy (180s) + the full backoff tail on a slow boot.
+TimeoutStartSec=600
 RemainAfterExit=yes
 
 [Install]

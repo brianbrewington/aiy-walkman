@@ -106,6 +106,15 @@ class LedStatus(threading.Thread):
             self._mode = mode
             self._latched = True
 
+    def release_force(self) -> None:
+        """Drop a latched mode so the status poller can drive the LED again.
+
+        Used to recover if a latched shutdown cue must be undone (e.g. `poweroff`
+        failed and the device is staying up).
+        """
+        with self._lock:
+            self._latched = False
+
     def stop(self) -> None:
         self._stop.set()
 

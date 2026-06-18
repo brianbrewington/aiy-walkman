@@ -63,6 +63,25 @@ else
   echo "       Build from source (docs/STEP0-NOTES.md + drivers/patches/) first."
 fi
 
+# Verify the DKMS modules actually built for the RUNNING kernel. The dpkg/apt steps
+# above are guarded with `|| true` (to tolerate partial/already-installed states), so
+# without this gate a failed build would let setup.sh "succeed" with no bonnet audio or
+# LEDs and then boot the runtime services broken. Fail loudly instead.
+KREL="$(uname -r)"
+DKMS_DIR="/lib/modules/${KREL}/updates/dkms"
+_missing=""
+for ko in snd-aiy-voicebonnet leds-ktd202x; do
+  ls "${DKMS_DIR}/${ko}.ko"* >/dev/null 2>&1 || _missing="${_missing} ${ko}"
+done
+if [ -n "$_missing" ]; then
+  echo "ERROR: AIY DKMS modules missing for kernel ${KREL}:${_missing}"
+  echo "       Bonnet audio/LEDs will not work. Inspect 'sudo dkms status' and the"
+  echo "       /var/lib/dkms/*/*/build/make.log; rebuild from source (docs/STEP0-NOTES.md"
+  echo "       + drivers/patches/) or hold the kernel, then re-run."
+  exit 1
+fi
+echo "verified AIY DKMS modules present for ${KREL}"
+
 # 3. Disable the SoC's built-in audio (the bonnet RT5645 is the card) ----------
 log "3/9 config.txt: disable built-in audio"
 CFG=/boot/firmware/config.txt
@@ -87,16 +106,20 @@ usermod -aG dialout,audio "$WALKMAN_USER" || true
 
 # 5. deno — yt-dlp's JS runtime for YouTube signature solving ------------------
 log "5/9 deno"
+# Pinned for reproducibility (verified working on walkman-b). Bump deliberately, not
+# implicitly via "latest". TODO: also verify a published sha256 of the zip for full
+# supply-chain integrity once a stable checksum source is wired in.
+DENO_VERSION="2.8.3"
 if [ -x /usr/local/bin/deno ]; then
   echo "deno present: $(/usr/local/bin/deno --version | head -1)"
 else
   tmp="$(mktemp -d)"
   curl -fsSL -o "$tmp/deno.zip" \
-    https://github.com/denoland/deno/releases/latest/download/deno-aarch64-unknown-linux-gnu.zip
+    "https://github.com/denoland/deno/releases/download/v${DENO_VERSION}/deno-aarch64-unknown-linux-gnu.zip"
   unzip -o -q "$tmp/deno.zip" -d "$tmp"
   install -m 0755 "$tmp/deno" /usr/local/bin/deno
   rm -rf "$tmp"
-  echo "deno installed: $(/usr/local/bin/deno --version | head -1)"
+  echo "deno installed (pinned v${DENO_VERSION}): $(/usr/local/bin/deno --version | head -1)"
 fi
 
 # 6. Python: Mopidy-YouTube + ytmusicapi + yt-dlp[default], then DROP brotli ----
