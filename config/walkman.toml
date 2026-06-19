@@ -48,3 +48,13 @@ audio_channels = 2
 audio_format = "S16_LE"
 meter_floor_rms = 80
 meter_ceiling_rms = 12000
+# Two-sided meter: pixels 0..4 = loudness (magenta), 9..5 = bass (red), mirrored.
+meter_bass_hz_lo = 40.0          # bass band low edge (Hz) — kick/sub
+meter_bass_hz_hi = 150.0         # bass band high edge (Hz)
+meter_bass_silence = 50.0        # bass-energy floor below which the bass half is dark
+# Adaptive auto-ranging (per frame): tracks the signal's own floor/peak so neither half
+# pins on a loud-but-flat track. Higher = adapts faster.
+meter_peak_decay = 0.08
+meter_floor_creep = 0.04
+meter_min_span_frac = 0.25       # min window as a fraction of peak (sensitivity)
+meter_sync_delay_ms = 0          # delay the lights to match the buffered speaker (tune by eye)

@@ -18,6 +18,8 @@ RENDER_S = 0.03
 
 BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
+MAGENTA = (255, 0, 255)   # loudness half (pixels 0..4)
+RED = (255, 0, 0)         # bass half (pixels 9..5, mirrored)
 OFF = (0, 0, 0)
 
 # Flip this constant if the physical switch direction feels backwards after mounting.
@@ -45,7 +47,8 @@ class CpxApp:
         self.normal_brightness = 0.35
         self.night_mode_volume_brightness = 0.004
         self.volume_feedback_seconds = 2.0
-        self.current_level = 0
+        self.current_level = 0       # loudness 0..255 (the left/0..4 half)
+        self.current_bass = 0        # bass 0..255 (the right/9..5 half)
         self.current_volume = 0
         self.volume_until = 0.0
         self.line_buffer = ""
@@ -110,30 +113,46 @@ class CpxApp:
             colors.append(scale(BLUE, brightness * amount))
         self.show(colors)
 
-    def render_vu(self):
-        if self.night_mode():
-            self.show([OFF] * NUM_PIXELS)
-            return
-
-        lit = clamp(self.current_level, 0, 255) * NUM_PIXELS / 255
+    def _fill_half(self, colors, indices, level, color):
+        """Light a half from indices[0] outward, proportional to level (0..255),
+        with a partial last pixel. Scaled by normal_brightness."""
+        lit = clamp(level, 0, 255) * len(indices) / 255
         whole = int(lit)
         partial = lit - whole
-        colors = []
-        for i in range(NUM_PIXELS):
-            if i < whole:
+        for j, idx in enumerate(indices):
+            if j < whole:
                 amount = 1.0
-            elif i == whole and i < NUM_PIXELS:
+            elif j == whole:
                 amount = partial
             else:
                 amount = 0.0
-            colors.append(scale(GREEN, self.normal_brightness * amount))
+            if amount > 0.0:
+                colors[idx] = scale(color, self.normal_brightness * amount)
+
+    def render_vu(self):
+        # Two-sided meter: loudness (magenta) grows 0->4, bass (red) grows 9->5.
+        if self.night_mode():
+            self.show([OFF] * NUM_PIXELS)
+            return
+        half = NUM_PIXELS // 2
+        colors = [OFF] * NUM_PIXELS
+        self._fill_half(colors, list(range(half)), self.current_level, MAGENTA)
+        self._fill_half(colors, list(range(NUM_PIXELS - 1, half - 1, -1)), self.current_bass, RED)
         self.show(colors)
 
     def handle_line(self, line):
         line = line.strip()
-        if line.startswith("L:"):
+        if line.startswith("M:"):
+            # M:<loud>,<bass> — the two-sided meter (loudness + bass), each 0..255
             try:
-                self.current_level = clamp(int(line[2:]), 0, 255)
+                loud_s, bass_s = line[2:].split(",")
+                self.current_level = clamp(int(loud_s), 0, 255)
+                self.current_bass = clamp(int(bass_s), 0, 255)
+            except (ValueError, IndexError):
+                pass
+        elif line.startswith("L:"):
+            try:
+                self.current_level = clamp(int(line[2:]), 0, 255)  # legacy single bar
             except ValueError:
                 pass
         elif line.startswith("V:"):

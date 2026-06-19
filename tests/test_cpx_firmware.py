@@ -195,19 +195,49 @@ class CpxFirmwareTest(unittest.TestCase):
         self.assertEqual(pixels.values[:5], [night_blue] * 5)
         self.assertEqual(pixels.values[5:], [cpx.OFF] * 5)
 
-    def test_volume_feedback_expires_back_to_green_vu(self):
+    def test_volume_feedback_expires_back_to_split_meter(self):
         app, _serial, pixels, _a, _b, _slide, clock = make_app(now=20.0)
 
         app.handle_line("V:30")
         clock[0] = 20.05
         app.tick()
-        self.assertEqual(pixels.values[:3], [(0, 0, int(255 * 0.22))] * 3)
+        self.assertEqual(pixels.values[:3], [(0, 0, int(255 * 0.22))] * 3)  # blue volume bar
 
-        app.current_level = 255
+        app.handle_line("M:255,0")
         clock[0] = 22.10
         app.tick()
-        green = (0, int(255 * 0.35), 0)
-        self.assertEqual(pixels.values, [green] * cpx.NUM_PIXELS)
+        magenta = (int(255 * 0.35), 0, int(255 * 0.35))  # default brightness 0.35
+        self.assertEqual(pixels.values[:5], [magenta] * 5)   # loudness half lit
+        self.assertEqual(pixels.values[5:], [cpx.OFF] * 5)   # bass silent -> dark
+
+    def test_m_line_parses_loudness_and_bass(self):
+        app, serial, *_rest = make_app()
+        app.handle_line("M:200,90")
+        self.assertEqual(app.current_level, 200)
+        self.assertEqual(app.current_bass, 90)
+        app.handle_line("M:bad")            # malformed -> ignored, no crash
+        self.assertEqual((app.current_level, app.current_bass), (200, 90))
+
+    def test_two_sided_meter_loud_magenta_bass_red(self):
+        app, _serial, pixels, _a, _b, _slide, _clock = make_app(slide_value=False)
+        app.normal_brightness = 1.0
+        app.handle_line("M:255,255")
+        app.render_vu()
+        self.assertEqual(pixels.values[0:5], [cpx.MAGENTA] * 5)   # loudness on 0..4
+        self.assertEqual(pixels.values[5:10], [cpx.RED] * 5)      # bass on 9..5
+
+    def test_two_sided_meter_halves_are_independent(self):
+        app, _serial, pixels, _a, _b, _slide, _clock = make_app(slide_value=False)
+        app.normal_brightness = 1.0
+        app.handle_line("M:255,0")          # loud full, bass silent
+        app.render_vu()
+        self.assertEqual(pixels.values[0:5], [cpx.MAGENTA] * 5)
+        self.assertEqual(pixels.values[5:10], [cpx.OFF] * 5)
+        # bass grows from pixel 9 toward 5
+        app.handle_line("M:0,255")
+        app.render_vu()
+        self.assertEqual(pixels.values[0:5], [cpx.OFF] * 5)
+        self.assertEqual(pixels.values[5:10], [cpx.RED] * 5)
 
     def test_config_line_clamps_brightness_and_duration(self):
         app, _serial, _pixels, _a, _b, _slide, _clock = make_app()

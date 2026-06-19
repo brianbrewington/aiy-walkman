@@ -14,6 +14,7 @@ This Pi-side process owns the two system-facing jobs:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import collections
 import glob
 import math
 import os
@@ -67,6 +68,17 @@ class SatelliteConfig:
     audio_format: str = "S16_LE"
     meter_floor_rms: int = 80
     meter_ceiling_rms: int = 12000
+    # Two-sided meter: loudness (wideband RMS) + bass (FFT energy in a low band).
+    meter_bass_hz_lo: float = 40.0      # bass band low edge (Hz) — kick/sub
+    meter_bass_hz_hi: float = 150.0     # bass band high edge (Hz)
+    meter_bass_silence: float = 50.0    # bass-energy floor below which the bass half is dark
+    # Adaptive auto-ranging (per 25Hz frame): the meter tracks the signal's own recent
+    # floor/peak so neither half pins. Higher decay/creep = faster adaptation.
+    meter_peak_decay: float = 0.08
+    meter_floor_creep: float = 0.04
+    meter_min_span_frac: float = 0.25   # min window as a fraction of peak (sensitivity)
+    # Lights run ahead of the buffered speaker audio; delay the frames to re-sync.
+    meter_sync_delay_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -119,6 +131,13 @@ def parse_configs(cfg: dict) -> tuple[str, VolumeConfig, SatelliteConfig]:
         audio_format=str(sat.get("audio_format", "S16_LE")),
         meter_floor_rms=meter_floor,
         meter_ceiling_rms=meter_ceiling,
+        meter_bass_hz_lo=float(sat.get("meter_bass_hz_lo", 40.0)),
+        meter_bass_hz_hi=float(sat.get("meter_bass_hz_hi", 150.0)),
+        meter_bass_silence=float(sat.get("meter_bass_silence", 50.0)),
+        meter_peak_decay=clamp(float(sat.get("meter_peak_decay", 0.08)), 0.0, 1.0),
+        meter_floor_creep=clamp(float(sat.get("meter_floor_creep", 0.04)), 0.0, 1.0),
+        meter_min_span_frac=max(0.01, float(sat.get("meter_min_span_frac", 0.25))),
+        meter_sync_delay_ms=max(0, int(sat.get("meter_sync_delay_ms", 0))),
     )
     return rpc_url, volume_cfg, satellite_cfg
 
@@ -169,6 +188,75 @@ def rms_to_level(rms: int, floor: int, ceiling: int) -> int:
 def smooth_level(previous: int, current: int, smoothing: float) -> int:
     smoothing = clamp(smoothing, 0.0, 1.0)
     return int(round(previous + (current - previous) * smoothing))
+
+
+class AutoRangeMeter:
+    """Map an arbitrary-scale signal to 0..255 with an adaptive window.
+
+    A fixed [floor, ceiling] pins the bar when a track lives in a narrow band — the
+    low pixels stay lit (no information) and only the top moves. Instead, track the
+    signal's own recent floor (`lo`, creeps up under sustained level) and peak (`hi`,
+    decays toward the floor), and map within that moving window so the bar always
+    spends its full range on the *current* dynamics. Kicks pulse; swells breathe.
+    Below an absolute `silence` the meter reads 0 (avoids amplifying noise on quiet).
+    Coefficients are per-frame (fed at level_hz). Scale-independent (works for both
+    wideband RMS and FFT band-energy) because the min window is a fraction of `hi`.
+    """
+
+    def __init__(self, silence, peak_decay=0.08, floor_creep=0.04, min_span_frac=0.25):
+        self.silence = float(max(1.0, silence))
+        self.peak_decay = clamp(peak_decay, 0.0, 1.0)
+        self.floor_creep = clamp(floor_creep, 0.0, 1.0)
+        self.min_span_frac = max(0.01, min_span_frac)
+        self.lo = None
+        self.hi = None
+
+    def level(self, value: float) -> int:
+        value = float(value)
+        if value <= self.silence:
+            if self.hi is not None and self.lo is not None:
+                self.hi += (self.lo - self.hi) * self.peak_decay  # let the peak relax
+            return 0
+        if self.lo is None:
+            self.lo = self.hi = value
+        if value > self.hi:
+            self.hi = value
+        else:
+            self.hi += (self.lo - self.hi) * self.peak_decay
+        if value < self.lo:
+            self.lo = value
+        else:
+            self.lo += (value - self.lo) * self.floor_creep
+        span = self.hi - self.lo
+        floor_span = self.min_span_frac * max(self.hi, 1.0)
+        if span < floor_span:
+            span = floor_span
+        return int(round(255 * clamp((value - self.lo) / span, 0.0, 1.0)))
+
+
+def compute_band_levels(data: bytes, channels: int, rate: int,
+                        bass_lo_hz: float, bass_hi_hz: float):
+    """Return (wideband_rms, bass_band_energy) for one S16_LE chunk.
+
+    Uses numpy for a real FFT to isolate the bass band (kick/sub). Falls back to the
+    stdlib wideband RMS with no bass (bass=0) if numpy is unavailable.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return float(rms_s16le(data)), 0.0
+    samples = np.frombuffer(data, dtype=np.int16)
+    if samples.size == 0:
+        return 0.0, 0.0
+    if channels > 1:
+        samples = samples.reshape(-1, channels).mean(axis=1)
+    x = samples.astype(np.float32)
+    rms = float(np.sqrt(np.mean(x * x)))
+    spec = np.abs(np.fft.rfft(x * np.hanning(x.size)))
+    freqs = np.fft.rfftfreq(x.size, 1.0 / rate)
+    band = (freqs >= bass_lo_hz) & (freqs <= bass_hi_hz)
+    bass = float(spec[band].mean()) if band.any() else 0.0
+    return rms, bass
 
 
 def make_config_line(cfg: SatelliteConfig) -> str:
@@ -249,7 +337,7 @@ class SerialLink:
 
     @staticmethod
     def should_log_tx(line: str) -> bool:
-        return not line.startswith("L:")
+        return not (line.startswith("L:") or line.startswith("M:"))
 
     def send_line(self, line: str) -> bool:
         if not line.endswith("\n"):
@@ -380,15 +468,26 @@ def serial_loop(stop: threading.Event, link: SerialLink, mopidy: MopidyClient,
 
 
 def audio_meter_loop(stop: threading.Event, link: SerialLink, cfg: SatelliteConfig) -> None:
-    if _audioop is None:
-        log("WARNING: audioop unavailable (Python 3.13+); using the slow pure-Python "
-            "RMS fallback — VU may lag on a Pi Zero. Use Python<=3.12 or add numpy.")
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        log("WARNING: numpy not installed; bass half disabled (loudness only). "
+            "Install python3-numpy for the two-sided meter.")
     chunk_frames = max(64, int(cfg.audio_rate / cfg.level_hz))
     # S16_LE only for now; keep the config explicit so future formats fail obviously.
     sample_width = 2
     chunk_bytes = chunk_frames * cfg.audio_channels * sample_width
     cmd = build_arecord_cmd(cfg)
-    smoothed = 0
+
+    # One adaptive meter per half so neither pins on a loud-but-narrow track.
+    loud_meter = AutoRangeMeter(cfg.meter_floor_rms, cfg.meter_peak_decay,
+                                cfg.meter_floor_creep, cfg.meter_min_span_frac)
+    bass_meter = AutoRangeMeter(cfg.meter_bass_silence, cfg.meter_peak_decay,
+                                cfg.meter_floor_creep, cfg.meter_min_span_frac)
+    smoothed_loud = smoothed_bass = 0
+    # Re-sync the lights to the buffered speaker output: hold each frame N frames.
+    delay_frames = max(0, int(round(cfg.meter_sync_delay_ms * cfg.level_hz / 1000.0)))
+    delay_buf = collections.deque()
 
     while not stop.is_set():
         proc = None
@@ -404,9 +503,15 @@ def audio_meter_loop(stop: threading.Event, link: SerialLink, cfg: SatelliteConf
                 data = proc.stdout.read(chunk_bytes)
                 if not data:
                     break
-                level = rms_to_level(rms_s16le(data), cfg.meter_floor_rms, cfg.meter_ceiling_rms)
-                smoothed = smooth_level(smoothed, level, cfg.smoothing)
-                link.send_line(f"L:{smoothed}")
+                rms, bass_energy = compute_band_levels(
+                    data, cfg.audio_channels, cfg.audio_rate,
+                    cfg.meter_bass_hz_lo, cfg.meter_bass_hz_hi)
+                smoothed_loud = smooth_level(smoothed_loud, loud_meter.level(rms), cfg.smoothing)
+                smoothed_bass = smooth_level(smoothed_bass, bass_meter.level(bass_energy), cfg.smoothing)
+                delay_buf.append((smoothed_loud, smoothed_bass))
+                if len(delay_buf) > delay_frames:    # emit a frame delayed by sync_delay_ms
+                    out_loud, out_bass = delay_buf.popleft()
+                    link.send_line(f"M:{out_loud},{out_bass}")
             code = proc.poll()
             log(f"audio meter stopped (code={code}); retrying")
         except FileNotFoundError:

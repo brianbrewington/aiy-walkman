@@ -235,5 +235,60 @@ class MeterMathTest(unittest.TestCase):
         self.assertGreater(satellite.rms_s16le(data), 0)
 
 
+class AutoRangeMeterTest(unittest.TestCase):
+    def test_below_silence_reads_zero(self):
+        m = satellite.AutoRangeMeter(silence=80)
+        self.assertEqual(m.level(0), 0)
+        self.assertEqual(m.level(50), 0)
+
+    def test_constant_signal_reads_dark(self):
+        # no dynamics -> the adaptive window collapses -> bar goes dark (the whole point:
+        # a loud-but-flat passage shouldn't pin the bar lit)
+        m = satellite.AutoRangeMeter(silence=10)
+        levels = [m.level(1000) for _ in range(20)]
+        self.assertEqual(max(levels), 0)
+
+    def test_transient_above_baseline_reads_high(self):
+        m = satellite.AutoRangeMeter(silence=10, peak_decay=0.2, floor_creep=0.05)
+        for _ in range(30):
+            m.level(500)               # establish a quiet baseline
+        self.assertGreater(m.level(5000), 200)   # a kick -> near full
+
+    def test_scale_independent(self):
+        for base in (5.0, 5_000_000.0):
+            m = satellite.AutoRangeMeter(silence=1, peak_decay=0.2, floor_creep=0.05)
+            for _ in range(20):
+                m.level(base)
+            self.assertGreater(m.level(base * 10), 200)
+
+
+def _has_numpy():
+    try:
+        import numpy  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+@unittest.skipUnless(_has_numpy(), "numpy required for the FFT bass split")
+class BandLevelsTest(unittest.TestCase):
+    def _tone(self, hz, rate=44100, n=1764, channels=2, amp=10000):
+        import numpy as np
+        t = np.arange(n) / rate
+        mono = (amp * np.sin(2 * np.pi * hz * t)).astype(np.int16)
+        inter = np.repeat(mono, channels)        # L=R=mono, interleaved
+        return inter.astype("<i2").tobytes()
+
+    def test_bass_tone_dominates_treble_in_bass_band(self):
+        _, bass_e = satellite.compute_band_levels(self._tone(60), 2, 44100, 40, 150)
+        _, treb_e = satellite.compute_band_levels(self._tone(4000), 2, 44100, 40, 150)
+        self.assertGreater(bass_e, treb_e * 5)
+
+    def test_silence_is_zero(self):
+        rms, bass = satellite.compute_band_levels(b"\x00\x00" * 1764 * 2, 2, 44100, 40, 150)
+        self.assertEqual(rms, 0.0)
+        self.assertEqual(bass, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
