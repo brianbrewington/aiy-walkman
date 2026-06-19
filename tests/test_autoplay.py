@@ -18,6 +18,26 @@ def fake_mopidy(added_tracks, state="playing"):
     return m
 
 
+class ConfigGuardTest(unittest.TestCase):
+    def _run_main(self, toml_text):
+        import os, sys, tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write(toml_text)
+            path = f.name
+        try:
+            with mock.patch.object(sys, "argv", ["autoplay", path]):
+                return autoplay.main()
+        finally:
+            os.unlink(path)
+
+    def test_missing_playlist_returns_clear_error(self):
+        self.assertEqual(self._run_main("[mopidy]\nrpc_url = \"http://x/rpc\"\n"), 2)
+
+    def test_placeholder_playlist_rejected(self):
+        self.assertEqual(
+            self._run_main('[playlist]\nid = "REPLACE_WITH_YOUR_PLAYLIST_ID"\n'), 2)
+
+
 class AutoplayTest(unittest.TestCase):
     def test_success_sets_modes_and_plays(self):
         m = fake_mopidy(added_tracks=[{"tlid": 1}, {"tlid": 2}], state="playing")

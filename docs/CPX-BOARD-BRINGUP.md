@@ -146,10 +146,17 @@ curl -fsSL -o bundle.zip \
 unzip -o -j bundle.zip "*/lib/neopixel.mpy" -d . && rm bundle.zip
 ```
 
-**Copy our firmware sources from the repo and compile** (run from your checkout,
-or `scp` `cpx/boot.py` and `cpx/code.py` to `~/cpx-stage` first):
+**Stage our firmware sources, then compile.** First get `boot.py` and `code.py` into
+`~/cpx-stage` — from a checkout *on the Pi* (`cp ~/walkman/cpx/{boot,code}.py ~/cpx-stage/`)
+or from your laptop:
 
 ```bash
+# from your laptop/checkout (skip if the repo is already on the Pi):
+scp cpx/boot.py cpx/code.py <user>@<pi-host>:~/cpx-stage/
+```
+
+```bash
+# on the Pi:
 cd ~/cpx-stage
 cp code.py wcpx.py            # the module name the launcher imports
 ./mpy-cross wcpx.py           # -> wcpx.mpy  (~2.7 KB)

@@ -88,6 +88,32 @@ To support a different login on a fresh unit, template these (e.g. setup.sh rewr
 the unit files + configs from `WALKMAN_USER`/`$HOME`). Low priority while all units use
 `brew`, but needed for a truly generic image.
 
+## CPX two-sided meter — delay auto-calibration (cross-correlation)
+
+The two-sided meter's lights run ahead of the buffered speaker output; `meter_sync_delay_ms`
+compensates with a fixed delay line, tuned by eye against a sparse bass-click probe. A
+rigorous auto-calibrator: play a log chirp / MLS, capture on the CPX mic, cross-correlate
+(GCC-PHAT) for the lag, auto-write `meter_sync_delay_ms`. Caveats: the CPX mic's ADC latency
+is a fixed offset (characterize + subtract); Pi↔CPX clocks aren't synced (trigger + timestamp
+carefully); the YT/codec latency is **common-mode** (upstream of the GStreamer tee) so it
+cancels in the tap-vs-speaker offset. No-mic alternative: read the speaker `alsasink` buffer
+latency from GStreamer directly. (Phase 2 — manual tuning works for now.)
+
+## From the Codex/Cursor repo audit (2026-06-18) — deferred items
+
+Fixed on the spot: ButtonSource GC ref, shutdown-gesture suppression, volume re-clamp on the
+account-script Mopidy restart, autoplay config guard, playlist-id validation, README clone
+URL, CPX runbook staging. Deferred:
+- **Button callback blocks on Mopidy RPC** (controller): a stalled RPC can hang the gpiozero
+  callback up to the client timeout. Proper fix: dispatch actions to a worker queue/thread.
+- **Auth LED by file-existence, not validity** — same root as the magenta-on-dead-cookie gap above.
+- **CPX serial fallback picks the last match**: the udev `/dev/walkman-cpx` symlink is the
+  deterministic production path; the `comports()` fallback should fail loudly on ambiguity.
+- **deno install**: version is pinned now; add a sha256 check for full supply-chain integrity.
+- **Test coverage**: jack_monitor (discovery/parse/apply), shim idempotency, a boot/restart
+  integration smoke (service order + volume-cap invariant), a walkman-account.sh harness.
+  Refresh stale test counts in docs; add CONTRIBUTING/license.
+
 ## Notes
 - These reinforce the value of the **bidirectional CPX serial channel** now in the
   build: repeat-track and a now-playing display can attach there without touching

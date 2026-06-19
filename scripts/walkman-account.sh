@@ -56,6 +56,11 @@ chmod 600 "$AUTH_OUT"
 
 # 2. optional: set this device's playlist
 if [ -n "$PLAYLIST" ]; then
+  # YouTube Music playlist ids are [A-Za-z0-9_-] only. Reject anything else so a stray
+  # character can't break the sed (or inject) into walkman.toml.
+  case "$PLAYLIST" in
+    *[!A-Za-z0-9_-]*) echo "error: playlist id has invalid characters: $PLAYLIST"; exit 1;;
+  esac
   sed -i -E "s|^id = \".*\"|id = \"$PLAYLIST\"|" "$TOML"
   echo "==> playlist set: $PLAYLIST"
 fi
@@ -73,6 +78,10 @@ fi
 # kid sees our friendly message, not "Job for walkman-autoplay.service failed".)
 echo "==> restarting Mopidy + autoplay"
 sudo systemctl restart walkman-mopidy.service
+# Re-clamp the kid-safe volume cap: Mopidy's restore_state can reload a saved volume
+# above the cap on this restart, and enforce_volume_cap only runs when the satellite
+# (re)starts — so bounce it too. No-op if the satellite isn't installed.
+sudo systemctl restart walkman-satellite.service 2>/dev/null || true
 if sudo systemctl restart walkman-autoplay.service 2>/dev/null; then
   echo "✅ Done — your music should be playing now (LED breathing green)."
 else

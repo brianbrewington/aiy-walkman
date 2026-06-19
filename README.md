@@ -27,7 +27,7 @@ the CPX satellite adds volume buttons and a secondary light display.
 1. Flash **Raspberry Pi OS Lite 64-bit (Bookworm)** with `rpi-imager`; in its settings set the **hostname**, user **`brew`**, **wifi**, and your **SSH key**.
 2. Get the repo onto the Pi at **`/home/brew/walkman`** (the systemd units hardcode that path):
    ```bash
-   git clone <this-repo> /home/brew/walkman      # or scp it over
+   git clone https://github.com/brianbrewington/aiy-walkman.git /home/brew/walkman   # private repo; or scp/rsync it over
    ```
 3. Run the idempotent installer (safe to re-run):
    ```bash

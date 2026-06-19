@@ -62,7 +62,15 @@ def attempt_start(m: MopidyClient, playlist_uri: str, playback: dict) -> bool:
 def main() -> int:
     config_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CONFIG
     cfg = load_config(config_path)
-    playlist_id = cfg["playlist"]["id"]
+    try:
+        playlist_id = cfg["playlist"]["id"]
+    except (KeyError, TypeError):
+        log("ERROR: no [playlist] id in config — set one with "
+            "scripts/walkman-account.sh --playlist <ID>")
+        return 2
+    if not playlist_id or playlist_id == "REPLACE_WITH_YOUR_PLAYLIST_ID":
+        log("ERROR: playlist id is unset/placeholder — run walkman-account.sh --playlist <ID>")
+        return 2
     playback = cfg.get("playback", {})
     rpc_url = cfg.get("mopidy", {}).get("rpc_url", "http://127.0.0.1:6680/mopidy/rpc")
     playlist_uri = PLAYLIST_URI_TMPL.format(id=playlist_id)

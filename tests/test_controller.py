@@ -34,6 +34,24 @@ def make_controller(state="playing"):
     return c
 
 
+class StartupShutdownTest(unittest.TestCase):
+    def test_start_keeps_strong_ref_to_button_source(self):
+        # regression: gpiozero closes a Button that gets GC'd -> button input dies
+        c = make_controller("playing")
+        with mock.patch("walkman.controller.ButtonSource") as BS, \
+             mock.patch("walkman.controller.signal.pause"), \
+             mock.patch("walkman.controller.threading.Thread"):
+            c.start()
+        self.assertIs(c._button_source, BS.return_value)
+
+    def test_gestures_ignored_while_shutting_down(self):
+        c = make_controller("playing")
+        c._shutting_down = True
+        c.handle_gesture("single")
+        c.handle_gesture("double")
+        c.mopidy.call.assert_not_called()
+
+
 class GestureTest(unittest.TestCase):
     def test_single_when_playing_pauses(self):
         c = make_controller("playing")

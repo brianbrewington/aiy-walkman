@@ -80,6 +80,8 @@ class Controller:
 
     # --- actions ---
     def handle_gesture(self, gesture: str) -> None:
+        if self._shutting_down:
+            return  # shutdown is underway/latched — ignore further button input
         log(f"gesture: {gesture}")
         if gesture == "single":
             self.play_pause()
@@ -178,7 +180,9 @@ class Controller:
     def start(self) -> None:
         self.led.start()
         threading.Thread(target=self._status_loop, daemon=True).start()
-        ButtonSource(
+        # Keep a strong reference: gpiozero closes a Button that gets garbage-collected,
+        # which would silently kill all button input (see docs/GPIO-VOLUME-BUTTONS-PLAN.md).
+        self._button_source = ButtonSource(
             pin=int(self.button_cfg.get("gpio", 23)),
             on_gesture=self.handle_gesture,
             long_press=float(self.button_cfg.get("long_press_seconds", 1.2)),
