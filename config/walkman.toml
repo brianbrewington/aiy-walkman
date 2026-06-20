@@ -58,3 +58,10 @@ meter_peak_decay = 0.08
 meter_floor_creep = 0.04
 meter_min_span_frac = 0.25       # min window as a fraction of peak (sensitivity)
 meter_sync_delay_ms = 0          # delay the lights to match the buffered speaker (tune by eye)
+meter_tuning_file = "/tmp/walkman-sync-delay-ms"  # live delay override written by scripts/walkman-meter-tune.py
+# Spectrum mode: 10 log-spaced FFT bands, one per pixel (rainbow red=bass -> violet=treble).
+meter_mode = "split"             # "split" (loud+bass) | "spectrum" (10-band FFT)
+spectrum_band_lo_hz = 40.0       # band 0 low edge (Hz)
+spectrum_band_hi_hz = 16000.0    # band 9 high edge (Hz); log-spaced between
+spectrum_per_band_autorange = true  # true = every band dances; false = honest spectral shape
+spectrum_silence = 50.0          # per-band energy floor below which a band is dark

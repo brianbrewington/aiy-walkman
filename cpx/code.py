@@ -22,6 +22,21 @@ MAGENTA = (255, 0, 255)   # loudness half (pixels 0..4)
 RED = (255, 0, 0)         # bass half (pixels 9..5, mirrored)
 OFF = (0, 0, 0)
 
+# Spectrum mode: one color per band, low audio freq -> high, mapped to the visible
+# spectrum (red = low, violet = high). Brightness encodes each band's energy.
+SPECTRUM_PALETTE = (
+    (255, 0, 0),     # 0  red      (bass)
+    (255, 80, 0),    # 1  orange
+    (255, 180, 0),   # 2  amber
+    (200, 255, 0),   # 3  yellow-green
+    (0, 255, 0),     # 4  green
+    (0, 255, 160),   # 5  teal
+    (0, 200, 255),   # 6  cyan
+    (0, 60, 255),    # 7  blue
+    (110, 0, 255),   # 8  indigo
+    (200, 0, 255),   # 9  violet   (treble)
+)
+
 # Flip this constant if the physical switch direction feels backwards after mounting.
 NIGHT_WHEN_SWITCH_VALUE = True
 
@@ -49,6 +64,8 @@ class CpxApp:
         self.volume_feedback_seconds = 2.0
         self.current_level = 0       # loudness 0..255 (the left/0..4 half)
         self.current_bass = 0        # bass 0..255 (the right/9..5 half)
+        self.current_bands = [0] * NUM_PIXELS   # spectrum: per-band energy 0..255
+        self.meter_style = "split"   # "split" | "spectrum"; set by the last frame received
         self.current_volume = 0
         self.volume_until = 0.0
         self.line_buffer = ""
@@ -65,7 +82,9 @@ class CpxApp:
     def display_mode(self):
         if self.monotonic() < self.volume_until:
             return "volume"
-        return "off" if self.night_mode() else "vu"
+        if self.night_mode():
+            return "off"
+        return "spectrum" if self.meter_style == "spectrum" else "vu"
 
     def status_line(self):
         return "S:{},{},{},{}".format(
@@ -140,14 +159,37 @@ class CpxApp:
         self._fill_half(colors, list(range(NUM_PIXELS - 1, half - 1, -1)), self.current_bass, RED)
         self.show(colors)
 
+    def render_spectrum(self):
+        # 10-band spectrum: pixel i = band i, hue from the palette (red bass -> violet
+        # treble), brightness = that band's energy.
+        if self.night_mode():
+            self.show([OFF] * NUM_PIXELS)
+            return
+        colors = []
+        for i in range(NUM_PIXELS):
+            amount = clamp(self.current_bands[i], 0, 255) / 255
+            colors.append(scale(SPECTRUM_PALETTE[i], self.normal_brightness * amount))
+        self.show(colors)
+
     def handle_line(self, line):
         line = line.strip()
-        if line.startswith("M:"):
+        if line.startswith("F:"):
+            # F:<b0>,<b1>,...,<b9> — the 10-band spectrum, each 0..255
+            try:
+                parts = line[2:].split(",")
+                if len(parts) == NUM_PIXELS:
+                    for i in range(NUM_PIXELS):
+                        self.current_bands[i] = clamp(int(parts[i]), 0, 255)
+                    self.meter_style = "spectrum"
+            except (ValueError, IndexError):
+                pass
+        elif line.startswith("M:"):
             # M:<loud>,<bass> — the two-sided meter (loudness + bass), each 0..255
             try:
                 loud_s, bass_s = line[2:].split(",")
                 self.current_level = clamp(int(loud_s), 0, 255)
                 self.current_bass = clamp(int(bass_s), 0, 255)
+                self.meter_style = "split"
             except (ValueError, IndexError):
                 pass
         elif line.startswith("L:"):
@@ -217,6 +259,8 @@ class CpxApp:
         if (now - self.last_render) >= RENDER_S:
             if now < self.volume_until:
                 self.render_volume()
+            elif self.meter_style == "spectrum":
+                self.render_spectrum()
             else:
                 self.render_vu()
             self.last_render = now

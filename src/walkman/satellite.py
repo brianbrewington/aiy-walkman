@@ -79,6 +79,18 @@ class SatelliteConfig:
     meter_min_span_frac: float = 0.25   # min window as a fraction of peak (sensitivity)
     # Lights run ahead of the buffered speaker audio; delay the frames to re-sync.
     meter_sync_delay_ms: int = 0
+    # If set, the meter loop live-reads this file's int (ms) as a delay override (for the
+    # interactive tuner) — beats meter_sync_delay_ms while present. "" disables.
+    meter_tuning_file: str = ""
+    # Spectrum mode (meter_mode="spectrum"): 10 log-spaced FFT bands, one per pixel.
+    meter_mode: str = "split"               # "split" (loud+bass) | "spectrum"
+    spectrum_band_lo_hz: float = 40.0       # band 0 low edge (Hz)
+    spectrum_band_hi_hz: float = 16000.0    # band 9 high edge (Hz); clamped under Nyquist
+    spectrum_per_band_autorange: bool = True  # True = every band dances; False = honest shape
+    spectrum_silence: float = 50.0          # per-band energy floor below which a band is dark
+
+
+SPECTRUM_BANDS = 10   # one log-spaced FFT band per NeoPixel
 
 
 @dataclass(frozen=True)
@@ -138,6 +150,16 @@ def parse_configs(cfg: dict) -> tuple[str, VolumeConfig, SatelliteConfig]:
         meter_floor_creep=clamp(float(sat.get("meter_floor_creep", 0.04)), 0.0, 1.0),
         meter_min_span_frac=max(0.01, float(sat.get("meter_min_span_frac", 0.25))),
         meter_sync_delay_ms=max(0, int(sat.get("meter_sync_delay_ms", 0))),
+        meter_tuning_file=str(sat.get("meter_tuning_file", "")),
+        meter_mode=(str(sat.get("meter_mode", "split")).lower()
+                    if str(sat.get("meter_mode", "split")).lower() in ("split", "spectrum")
+                    else "split"),
+        spectrum_band_lo_hz=float(sat.get("spectrum_band_lo_hz", 40.0)),
+        spectrum_band_hi_hz=min(
+            float(sat.get("spectrum_band_hi_hz", 16000.0)),
+            int(sat.get("audio_rate", 44100)) / 2 - 1),
+        spectrum_per_band_autorange=bool(sat.get("spectrum_per_band_autorange", True)),
+        spectrum_silence=float(sat.get("spectrum_silence", 50.0)),
     )
     return rpc_url, volume_cfg, satellite_cfg
 
@@ -259,6 +281,61 @@ def compute_band_levels(data: bytes, channels: int, rate: int,
     return rms, bass
 
 
+def log_band_edges(lo_hz: float, hi_hz: float, n_bands: int) -> list:
+    """n_bands+1 logarithmically-spaced band edges from lo_hz to hi_hz (geometric).
+
+    Pure stdlib so it is testable without numpy. Log spacing matches pitch perception —
+    each band spans a roughly constant musical interval.
+    """
+    lo = max(1.0, float(lo_hz))
+    hi = max(lo + 1.0, float(hi_hz))
+    ratio = (hi / lo) ** (1.0 / n_bands)
+    return [lo * (ratio ** i) for i in range(n_bands + 1)]
+
+
+def make_band_index(rate: int, chunk_frames: int, edges: list):
+    """Map each rFFT bin to its band index (0..len(edges)-2), or -1 if outside all bands.
+
+    Computed once per loop (depends only on rate + chunk size). Returns a numpy int array;
+    returns None if numpy is unavailable.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    freqs = np.fft.rfftfreq(chunk_frames, 1.0 / rate)
+    idx = np.digitize(freqs, edges) - 1            # bin -> band (0-based)
+    idx[(idx < 0) | (idx >= len(edges) - 1)] = -1  # mark out-of-range bins
+    return idx
+
+
+def compute_spectrum_bands(data: bytes, channels: int, rate: int,
+                           band_index, n_bands: int) -> list:
+    """Return one mean-magnitude energy per band (len == n_bands) for an S16_LE chunk.
+
+    Reuses the same rFFT as compute_band_levels, grouping bins by the precomputed
+    band_index. numpy-missing fallback returns [rms, 0, 0, ...] so band 0 still moves.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return [float(rms_s16le(data))] + [0.0] * (n_bands - 1)
+    samples = np.frombuffer(data, dtype=np.int16)
+    if samples.size == 0:
+        return [0.0] * n_bands
+    if channels > 1:
+        samples = samples.reshape(-1, channels).mean(axis=1)
+    x = samples.astype(np.float32)
+    spec = np.abs(np.fft.rfft(x * np.hanning(x.size)))
+    if band_index is None or band_index.size != spec.size:
+        band_index = make_band_index(rate, samples.size, log_band_edges(40.0, rate / 2 - 1, n_bands))
+    sums = np.bincount(band_index[band_index >= 0],
+                       weights=spec[band_index >= 0], minlength=n_bands)
+    counts = np.bincount(band_index[band_index >= 0], minlength=n_bands)
+    means = np.where(counts > 0, sums / np.maximum(counts, 1), 0.0)
+    return [float(v) for v in means[:n_bands]]
+
+
 def make_config_line(cfg: SatelliteConfig) -> str:
     return "C:{:.3f},{:.3f},{:.3f}".format(
         clamp(cfg.brightness, 0.0, 1.0),
@@ -274,7 +351,7 @@ def parse_cpx_status(line: str) -> CpxStatus | None:
     if len(parts) != 4:
         return None
     night_s, mode, volume_s, level_s = parts
-    if night_s not in ("0", "1") or mode not in ("off", "vu", "volume"):
+    if night_s not in ("0", "1") or mode not in ("off", "vu", "volume", "spectrum"):
         return None
     try:
         volume = int(volume_s)
@@ -337,7 +414,7 @@ class SerialLink:
 
     @staticmethod
     def should_log_tx(line: str) -> bool:
-        return not (line.startswith("L:") or line.startswith("M:"))
+        return not (line.startswith("L:") or line.startswith("M:") or line.startswith("F:"))
 
     def send_line(self, line: str) -> bool:
         if not line.endswith("\n"):
@@ -467,26 +544,68 @@ def serial_loop(stop: threading.Event, link: SerialLink, mopidy: MopidyClient,
         stop.wait(1.0)
 
 
+def _read_delay_override(path: str, last_mtime, base_frames: int, frames: int, level_hz: int):
+    """Live-read the interactive tuner's delay file. Returns (delay_frames, mtime).
+
+    Re-reads only when the file's mtime changes (cheap to poll each frame). When the file
+    is absent (tuner not running / quit), reverts to the toml base. Unreadable -> keep.
+    """
+    if not path:
+        return base_frames, last_mtime
+    try:
+        mtime = os.stat(path).st_mtime
+    except OSError:
+        return base_frames, None        # file gone -> back to the configured value
+    if mtime == last_mtime:
+        return frames, last_mtime
+    try:
+        with open(path) as f:
+            ms = max(0, int(f.read().strip()))
+    except (OSError, ValueError):
+        return frames, mtime
+    new_frames = max(0, int(round(ms * level_hz / 1000.0)))
+    log(f"sync delay override -> {ms}ms ({new_frames} frames)")
+    return new_frames, mtime
+
+
 def audio_meter_loop(stop: threading.Event, link: SerialLink, cfg: SatelliteConfig) -> None:
+    spectrum = cfg.meter_mode == "spectrum"
     try:
         import numpy  # noqa: F401
     except ImportError:
-        log("WARNING: numpy not installed; bass half disabled (loudness only). "
-            "Install python3-numpy for the two-sided meter.")
+        log("WARNING: numpy not installed; "
+            + ("spectrum reduced to band 0" if spectrum else "bass half disabled")
+            + " (loudness only). Install python3-numpy.")
     chunk_frames = max(64, int(cfg.audio_rate / cfg.level_hz))
     # S16_LE only for now; keep the config explicit so future formats fail obviously.
     sample_width = 2
     chunk_bytes = chunk_frames * cfg.audio_channels * sample_width
     cmd = build_arecord_cmd(cfg)
 
-    # One adaptive meter per half so neither pins on a loud-but-narrow track.
-    loud_meter = AutoRangeMeter(cfg.meter_floor_rms, cfg.meter_peak_decay,
-                                cfg.meter_floor_creep, cfg.meter_min_span_frac)
-    bass_meter = AutoRangeMeter(cfg.meter_bass_silence, cfg.meter_peak_decay,
-                                cfg.meter_floor_creep, cfg.meter_min_span_frac)
-    smoothed_loud = smoothed_bass = 0
-    # Re-sync the lights to the buffered speaker output: hold each frame N frames.
-    delay_frames = max(0, int(round(cfg.meter_sync_delay_ms * cfg.level_hz / 1000.0)))
+    # Per-band/per-half adaptive meters so nothing pins on a loud-but-narrow track.
+    if spectrum:
+        edges = log_band_edges(cfg.spectrum_band_lo_hz, cfg.spectrum_band_hi_hz, SPECTRUM_BANDS)
+        band_index = make_band_index(cfg.audio_rate, chunk_frames, edges)
+        meters = [AutoRangeMeter(cfg.spectrum_silence, cfg.meter_peak_decay,
+                                 cfg.meter_floor_creep, cfg.meter_min_span_frac)
+                  for _ in range(SPECTRUM_BANDS)]
+        smoothed = [0] * SPECTRUM_BANDS
+        global_peak = [0.0]   # for the honest (non-autorange) shared-scale mode
+        log(f"meter mode: spectrum ({SPECTRUM_BANDS} bands, "
+            f"{cfg.spectrum_band_lo_hz:.0f}-{cfg.spectrum_band_hi_hz:.0f} Hz, "
+            f"per-band autorange={cfg.spectrum_per_band_autorange})")
+    else:
+        loud_meter = AutoRangeMeter(cfg.meter_floor_rms, cfg.meter_peak_decay,
+                                    cfg.meter_floor_creep, cfg.meter_min_span_frac)
+        bass_meter = AutoRangeMeter(cfg.meter_bass_silence, cfg.meter_peak_decay,
+                                    cfg.meter_floor_creep, cfg.meter_min_span_frac)
+        smoothed_loud = smoothed_bass = 0
+
+    # Re-sync the lights to the buffered speaker output: hold each frame N frames. The
+    # interactive tuner can override this live via cfg.meter_tuning_file.
+    base_frames = max(0, int(round(cfg.meter_sync_delay_ms * cfg.level_hz / 1000.0)))
+    delay_frames = base_frames
+    override_mtime = None
     delay_buf = collections.deque()
 
     while not stop.is_set():
@@ -503,15 +622,35 @@ def audio_meter_loop(stop: threading.Event, link: SerialLink, cfg: SatelliteConf
                 data = proc.stdout.read(chunk_bytes)
                 if not data:
                     break
-                rms, bass_energy = compute_band_levels(
-                    data, cfg.audio_channels, cfg.audio_rate,
-                    cfg.meter_bass_hz_lo, cfg.meter_bass_hz_hi)
-                smoothed_loud = smooth_level(smoothed_loud, loud_meter.level(rms), cfg.smoothing)
-                smoothed_bass = smooth_level(smoothed_bass, bass_meter.level(bass_energy), cfg.smoothing)
-                delay_buf.append((smoothed_loud, smoothed_bass))
-                if len(delay_buf) > delay_frames:    # emit a frame delayed by sync_delay_ms
-                    out_loud, out_bass = delay_buf.popleft()
-                    link.send_line(f"M:{out_loud},{out_bass}")
+                delay_frames, override_mtime = _read_delay_override(
+                    cfg.meter_tuning_file, override_mtime, base_frames, delay_frames, cfg.level_hz)
+                if spectrum:
+                    bands = compute_spectrum_bands(data, cfg.audio_channels,
+                                                   cfg.audio_rate, band_index, SPECTRUM_BANDS)
+                    if cfg.spectrum_per_band_autorange:
+                        levels = [m.level(b) for m, b in zip(meters, bands)]
+                    else:
+                        # honest shape: one shared peak preserves true relative band heights
+                        global_peak[0] = max(max(bands), global_peak[0] * (1.0 - cfg.meter_peak_decay))
+                        denom = max(global_peak[0], cfg.spectrum_silence)
+                        levels = [int(round(255 * clamp(b / denom, 0.0, 1.0))) for b in bands]
+                    smoothed = [smooth_level(s, lv, cfg.smoothing)
+                                for s, lv in zip(smoothed, levels)]
+                    delay_buf.append(tuple(smoothed))
+                else:
+                    rms, bass_energy = compute_band_levels(
+                        data, cfg.audio_channels, cfg.audio_rate,
+                        cfg.meter_bass_hz_lo, cfg.meter_bass_hz_hi)
+                    smoothed_loud = smooth_level(smoothed_loud, loud_meter.level(rms), cfg.smoothing)
+                    smoothed_bass = smooth_level(smoothed_bass, bass_meter.level(bass_energy), cfg.smoothing)
+                    delay_buf.append((smoothed_loud, smoothed_bass))
+                # Emit a frame delayed by sync_delay_ms; while-drain so a shrunk delay catches up.
+                while len(delay_buf) > delay_frames:
+                    out = delay_buf.popleft()
+                    if spectrum:
+                        link.send_line("F:" + ",".join(str(v) for v in out))
+                    else:
+                        link.send_line(f"M:{out[0]},{out[1]}")
             code = proc.poll()
             log(f"audio meter stopped (code={code}); retrying")
         except FileNotFoundError:

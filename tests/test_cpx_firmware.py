@@ -239,6 +239,53 @@ class CpxFirmwareTest(unittest.TestCase):
         self.assertEqual(pixels.values[0:5], [cpx.OFF] * 5)
         self.assertEqual(pixels.values[5:10], [cpx.RED] * 5)
 
+    def test_f_line_parses_spectrum_and_sets_style(self):
+        app, _serial, *_rest = make_app()
+        app.handle_line("F:0,28,56,85,113,141,170,198,226,255")
+        self.assertEqual(app.current_bands, [0, 28, 56, 85, 113, 141, 170, 198, 226, 255])
+        self.assertEqual(app.meter_style, "spectrum")
+        app.handle_line("F:1,2,3")          # wrong arity -> ignored, state unchanged
+        self.assertEqual(app.current_bands[0], 0)
+        app.handle_line("M:10,20")          # M: flips style back to split
+        self.assertEqual(app.meter_style, "split")
+
+    def test_spectrum_renders_palette_brightness_per_pixel(self):
+        app, _serial, pixels, _a, _b, _slide, _clock = make_app(slide_value=False)
+        app.normal_brightness = 1.0
+        app.handle_line("F:255,0,255,0,255,0,255,0,255,0")
+        app.render_spectrum()
+        for i in range(cpx.NUM_PIXELS):
+            expected = cpx.SPECTRUM_PALETTE[i] if i % 2 == 0 else cpx.OFF
+            self.assertEqual(pixels.values[i], expected)
+        # fractional brightness: band 128 -> half the palette color
+        app.handle_line("F:128,128,128,128,128,128,128,128,128,128")
+        app.render_spectrum()
+        self.assertEqual(pixels.values[5], cpx.scale(cpx.SPECTRUM_PALETTE[5], 128 / 255))
+
+    def test_spectrum_night_mode_is_dark(self):
+        app, _serial, pixels, _a, _b, _slide, _clock = make_app(slide_value=True)
+        app.handle_line("F:255,255,255,255,255,255,255,255,255,255")
+        app.render_spectrum()
+        self.assertEqual(pixels.values, [cpx.OFF] * cpx.NUM_PIXELS)
+
+    def test_tick_dispatches_to_spectrum_and_volume_overrides(self):
+        app, _serial, pixels, _a, _b, _slide, clock = make_app(now=5.0, slide_value=False)
+        app.normal_brightness = 1.0
+        app.handle_line("F:255,0,0,0,0,0,0,0,0,0")
+        clock[0] = 5.05
+        app.tick()
+        self.assertEqual(pixels.values[0], cpx.SPECTRUM_PALETTE[0])   # spectrum rendered
+        app.handle_line("V:50")                                       # volume press overrides
+        clock[0] = 5.10
+        app.tick()
+        self.assertEqual(pixels.values[0], (0, 0, int(255 * 0.22)))   # blue volume bar
+
+    def test_status_reports_spectrum_mode(self):
+        app, serial, _p, _a, _b, _slide, _clock = make_app(slide_value=False)
+        app.handle_line("F:0,0,0,0,0,0,0,0,0,0")
+        app.handle_line("Q")
+        self.assertTrue(serial.writes[-1].startswith(b"S:0,spectrum,"))
+
     def test_config_line_clamps_brightness_and_duration(self):
         app, _serial, _pixels, _a, _b, _slide, _clock = make_app()
 

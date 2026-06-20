@@ -290,5 +290,59 @@ class BandLevelsTest(unittest.TestCase):
         self.assertEqual(bass, 0.0)
 
 
+class LogBandEdgesTest(unittest.TestCase):
+    def test_edges_are_monotonic_geometric_and_span_the_range(self):
+        edges = satellite.log_band_edges(40, 16000, 10)
+        self.assertEqual(len(edges), 11)
+        self.assertAlmostEqual(edges[0], 40.0)
+        self.assertAlmostEqual(edges[-1], 16000.0)
+        self.assertTrue(all(edges[i] < edges[i + 1] for i in range(10)))
+        ratios = [edges[i + 1] / edges[i] for i in range(10)]
+        self.assertTrue(all(abs(r - ratios[0]) < 1e-6 for r in ratios))  # geometric
+
+
+@unittest.skipUnless(_has_numpy(), "numpy required for the FFT spectrum")
+class SpectrumBandsTest(BandLevelsTest):   # reuse the _tone helper
+    def _bands(self, data, lo=40, hi=16000, n=10):
+        edges = satellite.log_band_edges(lo, hi, n)
+        idx = satellite.make_band_index(44100, 1764, edges)
+        return satellite.compute_spectrum_bands(data, 2, 44100, idx, n)
+
+    def test_low_tone_lights_low_band(self):
+        bands = self._bands(self._tone(60))
+        self.assertEqual(len(bands), 10)
+        self.assertIn(max(range(10), key=lambda i: bands[i]), (0, 1))
+
+    def test_high_tone_lights_high_band(self):
+        bands = self._bands(self._tone(8000))
+        self.assertGreaterEqual(max(range(10), key=lambda i: bands[i]), 7)
+
+    def test_silence_all_zero(self):
+        self.assertEqual(self._bands(b"\x00\x00" * 1764 * 2), [0.0] * 10)
+
+    def test_numpy_fallback_keeps_band0_alive(self):
+        import sys
+        with mock.patch.dict(sys.modules, {"numpy": None}):
+            bands = satellite.compute_spectrum_bands(b"\x00\x40" * 1764 * 2, 2, 44100, None, 10)
+        self.assertEqual(len(bands), 10)
+        self.assertGreater(bands[0], 0.0)        # band 0 = RMS fallback
+        self.assertEqual(bands[1:], [0.0] * 9)
+
+
+class MeterModeConfigTest(unittest.TestCase):
+    def test_spectrum_mode_parses(self):
+        _r, _v, sat = satellite.parse_configs({"satellite": {"meter_mode": "spectrum"}})
+        self.assertEqual(sat.meter_mode, "spectrum")
+
+    def test_invalid_mode_falls_back_to_split(self):
+        _r, _v, sat = satellite.parse_configs({"satellite": {"meter_mode": "disco"}})
+        self.assertEqual(sat.meter_mode, "split")
+
+    def test_band_hi_clamped_under_nyquist(self):
+        _r, _v, sat = satellite.parse_configs(
+            {"satellite": {"audio_rate": 44100, "spectrum_band_hi_hz": 99999.0}})
+        self.assertLess(sat.spectrum_band_hi_hz, 44100 / 2)
+
+
 if __name__ == "__main__":
     unittest.main()
